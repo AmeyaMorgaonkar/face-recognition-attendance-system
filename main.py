@@ -6,7 +6,9 @@ video = cv2.VideoCapture(0)
 
 while True:
     check, frame = video.read()
-    print(check)
+    
+    if check == False:
+        continue
 
     cv2.imshow("Camera", frame)
 
