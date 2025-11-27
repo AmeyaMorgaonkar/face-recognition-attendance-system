@@ -10,9 +10,13 @@ def draw(img, classifier, scaleFactor, minNeighbors, color, text):
         cv2.putText(img, text, (x, y-4), cv2.FACE_RECOGNIZER_SF_FR_COSINE, 0.8, color, 1, cv2.LINE_AA)
         coords = [x, y, w, h]
 
-    return coords, img
+    return coords
 
-def detect_face(img, faceCascade):
-    coords, img = draw(img, faceCascade, 1.1, 2, (255, 0, 0), "Face")
+def detect_face(img, faceCascade, eyeCascade):
+    coords = draw(img, faceCascade, 1.1, 2, (255, 0, 0), "Face")
+    
+    if len(coords) == 4:
+        roi_image = img[coords[1]: coords[1] + coords[3], coords[0]: coords[0] + coords[2]]
+        coords = draw(roi_image, eyeCascade, 1.1, 6, (0, 0, 255), "Eyes")
 
     return img
