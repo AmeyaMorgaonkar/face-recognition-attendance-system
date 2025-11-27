@@ -13,10 +13,10 @@ def draw(img, classifier, scaleFactor, minNeighbors, color, text):
     return coords
 
 def detect_face(img, faceCascade, eyeCascade):
-    coords = draw(img, faceCascade, 1.1, 2, (255, 0, 0), "Face")
+    coords = draw(img, faceCascade, 1.1, 4, (255, 0, 0), "Face")
     
     if len(coords) == 4:
         roi_image = img[coords[1]: coords[1] + coords[3], coords[0]: coords[0] + coords[2]]
-        coords = draw(roi_image, eyeCascade, 1.1, 6, (0, 0, 255), "Eyes")
+        coords = draw(roi_image, eyeCascade, 1.1, 8, (0, 0, 255), "Eyes")
 
     return img
