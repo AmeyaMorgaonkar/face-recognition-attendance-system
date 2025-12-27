@@ -1,56 +1,840 @@
-import time
-import cv2
-import functions
+#!/usr/bin/env python
+"""
+Main entry point for Face Recognition Attendance System with Django integration.
 
-# Initialize face recognizer
-face_recognizer = functions.FaceRecognizer(known_faces_dir="known_faces")
+Usage:
+    python main.py                    # Run face recognition (manual mode)
+    python main.py auto <classroom>   # Auto mode - monitors timetable, starts 15min before lecture
+    python main.py runserver          # Start Django web server
+    python main.py migrate            # Run database migrations
+    python main.py createsuperuser    # Create admin user
+    python main.py setup              # Initial setup (migrate + create sample data)
+    python main.py shell              # Django shell
+"""
 
-# Try to load existing model, or train from known_faces directory
-print("Loading face recognition model...")
-if not face_recognizer.load_model():
-    print("No existing model found. Training from known_faces directory...")
-    face_recognizer.load_known_faces()
-print("Ready!")
+import sys
+import os
+from datetime import datetime, timedelta, time as dt_time
+import time as time_module
 
-video = cv2.VideoCapture(0)
-# time.sleep(1)
+# Add project to path and setup Django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'attendance_system.settings')
 
-print("\nControls:")
-print("  'q' - Quit")
-print("  'c' - Capture and save current face (you'll be prompted for name)")
-print("  'r' - Reload/retrain from known_faces directory\n")
 
-while True:
-    check, frame = video.read()
+def run_django_command(args):
+    """Run Django management commands"""
+    from django.core.management import execute_from_command_line
+    execute_from_command_line(['manage.py'] + args)
+
+
+def run_face_recognition():
+    """
+    Run the face recognition attendance system - FULLY AUTOMATIC.
     
-    if check == False:
-        continue
-
-    # Recognize faces in the frame
-    frame, recognized = face_recognizer.recognize_faces(frame)
+    - Opens camera immediately (uses Room 101 by default)
+    - Automatically detects which lecture is active based on current time
+    - Only marks attendance for students belonging to the currently active class
+    - Auto-starts and auto-ends lectures based on timetable
+    - No user prompts needed
+    """
+    import time
+    import cv2
+    import functions
+    from datetime import datetime, timedelta
     
-    cv2.imshow("Face Recognition Attendance System", frame)
-
-    key = cv2.waitKey(1)
-
-    if key == ord('q'):
-        break
-    elif key == ord('c'):
-        # Capture face - pause video and get name
-        cv2.destroyAllWindows()
-        person_name = input("Enter the person's name: ").strip()
-        if person_name:
-            success = face_recognizer.capture_face(frame, person_name)
-            if success:
-                # Retrain to include the new face
-                print("Retraining model with new face...")
-                face_recognizer.load_known_faces()
-        else:
-            print("No name entered, skipping capture.")
-    elif key == ord('r'):
-        # Reload/retrain from known_faces
-        print("Retraining from known_faces directory...")
+    # Setup Django for database access
+    import django
+    django.setup()
+    
+    from django.utils import timezone
+    from core.models import Room, Classroom, Timetable, Lecture, Attendance, Student
+    
+    # Initialize face recognizer
+    face_recognizer = functions.FaceRecognizer(known_faces_dir="known_faces")
+    
+    # Try to load existing model, or train from known_faces directory
+    print("Loading face recognition model...")
+    if not face_recognizer.load_model():
+        print("No existing model found. Training from known_faces directory...")
         face_recognizer.load_known_faces()
+    print("Ready!")
+    
+    # Get default room (Room 101)
+    try:
+        room = Room.objects.get(name="Room 101")
+    except Room.DoesNotExist:
+        room = Room.objects.first()
+        if not room:
+            print("No rooms found! Run 'python main.py setup' first.")
+            return
+    
+    print("\n" + "="*60)
+    print("FACE RECOGNITION ATTENDANCE SYSTEM")
+    print(f"Room: {room.name}")
+    print("="*60)
+    print("\nCamera will open and automatically detect lectures based on time.")
+    print("Controls: 'q' to quit, 'c' to capture face, 'r' to retrain")
+    print("-"*60)
+    
+    video = cv2.VideoCapture(room.camera_index)
+    
+    if not video.isOpened():
+        print(f"Error: Could not open camera {room.camera_index}")
+        return
+    
+    # State tracking
+    active_lecture = None
+    active_timetable = None
+    marked_in_session = set()
+    last_check_time = None
+    
+    def get_current_timetable_entry():
+        """Get the timetable entry for the current time slot in this room."""
+        now = timezone.localtime()
+        current_time = now.time()
+        current_day = now.weekday()
+        
+        # Find timetable entry where current time is within start and end time
+        return Timetable.objects.filter(
+            room=room,
+            day_of_week=current_day,
+            start_time__lte=current_time,
+            end_time__gt=current_time
+        ).select_related('classroom', 'subject', 'teacher').first()
+    
+    def start_lecture_for_timetable(timetable_entry):
+        """Start or get existing lecture for a timetable entry."""
+        today = timezone.localtime().date()
+        
+        # Check if lecture already exists for today
+        lecture, created = Lecture.objects.get_or_create(
+            timetable=timetable_entry,
+            date=today,
+            defaults={'status': 'scheduled'}
+        )
+        
+        if lecture.status == 'scheduled':
+            lecture.start_lecture(carry_forward=True)
+            print(f"\n✓ LECTURE STARTED: {timetable_entry.subject.name}")
+            print(f"  Class: {timetable_entry.classroom.name}")
+            print(f"  Time: {timetable_entry.start_time} - {timetable_entry.end_time}")
+        
+        return lecture
+    
+    def end_lecture(lecture):
+        """End the current lecture."""
+        if lecture and lecture.status == 'active':
+            lecture.end_lecture()
+            print(f"\n✓ LECTURE ENDED: {lecture.timetable.subject.name}")
+            # Show attendance summary
+            present = lecture.attendance_records.filter(status='present').count()
+            total = lecture.attendance_records.count()
+            print(f"  Attendance: {present}/{total} present")
+    
+    def mark_attendance_for_face(face_name, lecture):
+        """Mark attendance for a recognized face if they belong to the active class."""
+        if not lecture or not face_name or face_name == "Unknown":
+            return None
+        
+        try:
+            student = Student.objects.get(face_folder_name=face_name)
+        except Student.DoesNotExist:
+            return {'success': False, 'message': f'No student found for face: {face_name}'}
+        
+        # Check if student belongs to the class that has this lecture
+        if student.classroom != lecture.timetable.classroom:
+            return {
+                'success': False, 
+                'message': f'{student.name} is from {student.classroom.name}, not {lecture.timetable.classroom.name}'
+            }
+        
+        # Mark attendance
+        attendance, created = Attendance.objects.get_or_create(
+            lecture=lecture,
+            student=student,
+            defaults={'status': 'present', 'marked_at': timezone.now(), 'marked_by_face_recognition': True}
+        )
+        
+        if not created and attendance.status != 'present':
+            attendance.status = 'present'
+            attendance.marked_at = timezone.now()
+            attendance.marked_by_face_recognition = True
+            attendance.save()
+            return {'success': True, 'student_name': student.name, 'already_marked': False}
+        elif created:
+            return {'success': True, 'student_name': student.name, 'already_marked': False}
+        else:
+            return {'success': True, 'student_name': student.name, 'already_marked': True}
+    
+    print("\nWaiting for lectures to start...")
+    
+    while True:
+        check, frame = video.read()
+        
+        if not check:
+            continue
+        
+        now = timezone.localtime()
+        
+        # Check timetable every second
+        if last_check_time is None or (now - last_check_time).seconds >= 1:
+            last_check_time = now
+            current_timetable = get_current_timetable_entry()
+            
+            # Handle lecture transitions
+            if current_timetable != active_timetable:
+                # End previous lecture if exists
+                if active_lecture:
+                    end_lecture(active_lecture)
+                    active_lecture = None
+                    marked_in_session.clear()
+                
+                # Start new lecture if there's a timetable entry
+                if current_timetable:
+                    active_timetable = current_timetable
+                    active_lecture = start_lecture_for_timetable(current_timetable)
+                    marked_in_session.clear()
+                else:
+                    active_timetable = None
+                    if active_lecture:
+                        print("\nNo lecture scheduled for current time. Waiting...")
+        
+        # Recognize faces in the frame
+        frame, recognized = face_recognizer.recognize_faces(frame)
+        
+        # Mark attendance for recognized faces
+        if active_lecture and recognized:
+            for name in recognized:
+                if name not in marked_in_session and name != "Unknown":
+                    result = mark_attendance_for_face(name, active_lecture)
+                    if result:
+                        if result.get('success'):
+                            if not result.get('already_marked'):
+                                print(f"✓ ATTENDANCE: {result.get('student_name', name)} marked PRESENT for {active_lecture.timetable.classroom.name}")
+                            marked_in_session.add(name)
+                        else:
+                            # Only print once per face per session
+                            if name not in marked_in_session:
+                                print(f"✗ {result.get('message')}")
+                                marked_in_session.add(name)
+        
+        # Display info on frame
+        if active_lecture:
+            cv2.putText(frame, f"CLASS: {active_lecture.timetable.classroom.name}", (10, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(frame, f"SUBJECT: {active_lecture.timetable.subject.name}", (10, 60),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            end_time = active_lecture.timetable.end_time.strftime("%H:%M")
+            cv2.putText(frame, f"Ends at: {end_time}", (10, 90),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        else:
+            cv2.putText(frame, "No active lecture", (10, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            # Show next lecture
+            next_lecture = Timetable.objects.filter(
+                room=room,
+                day_of_week=now.weekday(),
+                start_time__gt=now.time()
+            ).order_by('start_time').first()
+            if next_lecture:
+                cv2.putText(frame, f"Next: {next_lecture.classroom.name} at {next_lecture.start_time.strftime('%H:%M')}", 
+                           (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        # Show current time
+        cv2.putText(frame, now.strftime("%H:%M:%S"), (frame.shape[1] - 100, 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        
+        cv2.imshow("Face Recognition Attendance System", frame)
+        
+        key = cv2.waitKey(1)
+        
+        if key == ord('q'):
+            if active_lecture:
+                end_lecture(active_lecture)
+            break
+        
+        elif key == ord('c'):
+            # Capture face
+            cv2.destroyAllWindows()
+            person_name = input("Enter the person's name (use folder name for attendance): ").strip()
+            if person_name:
+                success = face_recognizer.capture_face(frame, person_name)
+                if success:
+                    print("Retraining model with new face...")
+                    face_recognizer.load_known_faces()
+            else:
+                print("No name entered, skipping capture.")
+        
+        elif key == ord('r'):
+            print("Retraining from known_faces directory...")
+            face_recognizer.load_known_faces()
+            marked_in_session.clear()
+    
+    video.release()
+    cv2.destroyAllWindows()
 
-video.release()
-cv2.destroyAllWindows()
+
+def run_auto_attendance(room_name=None):
+    """
+    Automated attendance mode for a specific ROOM (not classroom).
+    
+    - Camera is placed in a Room
+    - Monitors timetable to see which Classroom uses this Room at what time
+    - Starts camera 15 minutes before each scheduled lecture
+    - Auto-creates lecture and starts attendance when lecture time begins
+    - For back-to-back lectures of the SAME classroom, carries forward attendance
+    - For different classrooms, creates fresh attendance
+    - Marks all students who didn't appear as absent when lecture ends
+    """
+    import cv2
+    import functions
+    import django
+    django.setup()
+    
+    from django.utils import timezone
+    from core.models import Room, Classroom, Timetable, Lecture, Attendance, Student
+    
+    # Initialize face recognizer
+    face_recognizer = functions.FaceRecognizer(known_faces_dir="known_faces")
+    
+    print("Loading face recognition model...")
+    if not face_recognizer.load_model():
+        print("No existing model found. Training from known_faces directory...")
+        face_recognizer.load_known_faces()
+    print("Ready!")
+    
+    # Get room
+    if room_name:
+        try:
+            room = Room.objects.get(name__iexact=room_name)
+        except Room.DoesNotExist:
+            print(f"Room '{room_name}' not found!")
+            rooms = Room.objects.all()
+            print("Available rooms:")
+            for r in rooms:
+                print(f"  - {r.name}")
+            return
+    else:
+        rooms = list(Room.objects.all())
+        if not rooms:
+            print("No rooms found. Run 'python main.py setup' first.")
+            return
+        
+        print("\nAvailable Rooms (each has a camera):")
+        for idx, r in enumerate(rooms, 1):
+            print(f"  {idx}. {r.name} (camera index: {r.camera_index})")
+        
+        try:
+            choice = input("\nSelect room number: ").strip()
+            room = rooms[int(choice) - 1]
+        except (ValueError, IndexError):
+            print("Invalid selection")
+            return
+    
+    print(f"\n{'='*60}")
+    print(f"AUTO ATTENDANCE MODE - {room.name}")
+    print(f"{'='*60}")
+    print("System will automatically:")
+    print("  • Start camera 15 minutes before each lecture in this room")
+    print("  • Detect which class is scheduled and mark their attendance")
+    print("  • Carry forward attendance for back-to-back same-class lectures")
+    print("  • Mark remaining students absent when lecture ends")
+    print("\nPress 'q' to quit at any time")
+    print(f"{'='*60}\n")
+    
+    EARLY_START_MINUTES = 15  # Start camera this many minutes before lecture
+    
+    video = None
+    active_lecture = None
+    current_timetable = None
+    marked_in_session = set()
+    camera_active = False
+    current_classroom = None  # Track which classroom is currently being attended
+    
+    def get_next_lecture_info():
+        """Get the next upcoming lecture from timetable FOR THIS ROOM"""
+        now = timezone.now()
+        current_time = now.time()
+        day_of_week = now.weekday()
+        
+        # Get today's remaining lectures IN THIS ROOM
+        todays_lectures = Timetable.objects.filter(
+            room=room,
+            day_of_week=day_of_week,
+            end_time__gt=current_time  # Lecture hasn't ended yet
+        ).order_by('start_time')
+        
+        if todays_lectures.exists():
+            return todays_lectures.first(), now.date()
+        
+        # No more lectures today, check next days
+        for days_ahead in range(1, 8):
+            future_date = now.date() + timedelta(days=days_ahead)
+            future_day = future_date.weekday()
+            
+            future_lectures = Timetable.objects.filter(
+                room=room,
+                day_of_week=future_day
+            ).order_by('start_time')
+            
+            if future_lectures.exists():
+                return future_lectures.first(), future_date
+        
+        return None, None
+    
+    def time_until(target_time, target_date):
+        """Calculate seconds until a target datetime"""
+        now = timezone.now()
+        target_datetime = timezone.make_aware(
+            datetime.combine(target_date, target_time)
+        )
+        delta = target_datetime - now
+        return delta.total_seconds()
+    
+    def start_camera():
+        nonlocal video, camera_active
+        if not camera_active:
+            video = cv2.VideoCapture(room.camera_index)
+            camera_active = True
+            print(f"📷 Camera started (index {room.camera_index})")
+    
+    def stop_camera():
+        nonlocal video, camera_active
+        if camera_active and video:
+            video.release()
+            cv2.destroyAllWindows()
+            camera_active = False
+            print("📷 Camera stopped")
+    
+    def mark_attendance_for_face(face_name, lecture):
+        """Mark attendance for a recognized face, checking if they belong to current class"""
+        try:
+            student = Student.objects.get(face_folder_name=face_name)
+            
+            # Check if student belongs to the classroom for this lecture
+            if student.classroom != lecture.timetable.classroom:
+                return {
+                    'success': False, 
+                    'message': f'{student.name} is from {student.classroom}, not {lecture.timetable.classroom}'
+                }
+            
+            attendance, created = Attendance.objects.get_or_create(
+                lecture=lecture,
+                student=student,
+                defaults={'status': 'absent'}
+            )
+            
+            if attendance.status != 'present':
+                attendance.status = 'present'
+                attendance.marked_at = timezone.now()
+                attendance.marked_by_face_recognition = True
+                attendance.save()
+                return {
+                    'success': True,
+                    'message': f'Marked {student.name} present',
+                    'student_name': student.name,
+                    'already_marked': False
+                }
+            else:
+                return {
+                    'success': True,
+                    'student_name': student.name,
+                    'already_marked': True
+                }
+        except Student.DoesNotExist:
+            return {'success': False, 'message': f'No student with face folder: {face_name}'}
+    
+    try:
+        while True:
+            now = timezone.now()
+            current_time = now.time()
+            today = now.date()
+            
+            # If no active lecture, find the next one
+            if not active_lecture:
+                next_timetable, lecture_date = get_next_lecture_info()
+                
+                if not next_timetable:
+                    print("No upcoming lectures found in timetable for this room.")
+                    time_module.sleep(60)
+                    continue
+                
+                # Calculate time until lecture starts
+                seconds_until_start = time_until(next_timetable.start_time, lecture_date)
+                seconds_until_early_start = seconds_until_start - (EARLY_START_MINUTES * 60)
+                
+                # Check if it's a different lecture than current
+                if current_timetable != next_timetable or not camera_active:
+                    current_timetable = next_timetable
+                    
+                    if seconds_until_early_start > 0:
+                        # Not yet time to start
+                        print(f"\n⏰ Next in {room.name}: {next_timetable.subject.name}")
+                        print(f"   Class: {next_timetable.classroom.name}")
+                        print(f"   Time: {next_timetable.start_time} on {lecture_date}")
+                        print(f"   Camera will start in {int(seconds_until_early_start // 60)} minutes")
+                        
+                        # Wait until early start time (check every 30 seconds)
+                        while seconds_until_early_start > 0:
+                            time_module.sleep(min(30, seconds_until_early_start))
+                            seconds_until_early_start = time_until(
+                                next_timetable.start_time, lecture_date
+                            ) - (EARLY_START_MINUTES * 60)
+                            
+                            # Check for quit
+                            if camera_active:
+                                key = cv2.waitKey(1)
+                                if key == ord('q'):
+                                    raise KeyboardInterrupt
+                    
+                    # Time to start camera (15 min before)
+                    if not camera_active:
+                        print(f"\n🔔 Starting camera for: {next_timetable.subject.name}")
+                        print(f"   Class: {next_timetable.classroom.name}")
+                        print(f"   Lecture starts at {next_timetable.start_time}")
+                        start_camera()
+                
+                # Check if lecture should start now
+                seconds_until_start = time_until(next_timetable.start_time, lecture_date)
+                
+                if seconds_until_start <= 0 and lecture_date == today:
+                    # Start the lecture!
+                    lecture, created = Lecture.objects.get_or_create(
+                        timetable=next_timetable,
+                        date=today,
+                        defaults={'status': 'scheduled'}
+                    )
+                    
+                    if lecture.status != 'active':
+                        # Check if this is a back-to-back lecture for same class
+                        is_same_class_continuation = (
+                            current_classroom is not None and 
+                            current_classroom == next_timetable.classroom
+                        )
+                        
+                        result_msg = lecture.start_lecture(carry_forward=is_same_class_continuation)
+                        
+                        print(f"\n✅ LECTURE STARTED: {next_timetable.subject.name}")
+                        print(f"   Class: {next_timetable.classroom.name}")
+                        print(f"   Room: {room.name}")
+                        print(f"   Teacher: {next_timetable.teacher.name}")
+                        print(f"   Ends at: {next_timetable.end_time}")
+                        print(f"   {result_msg}")
+                        
+                        if lecture.carried_from:
+                            print(f"   📋 Attendance carried from: {lecture.carried_from.timetable.subject.name}")
+                    
+                    active_lecture = lecture
+                    current_classroom = next_timetable.classroom
+                    
+                    # If attendance was carried forward, pre-populate marked_in_session
+                    if lecture.carried_from:
+                        for att in lecture.attendance_records.filter(status='present'):
+                            if att.student.face_folder_name:
+                                marked_in_session.add(att.student.face_folder_name)
+                    else:
+                        marked_in_session.clear()
+            
+            # If lecture is active, check if it should end
+            if active_lecture:
+                end_time = active_lecture.timetable.end_time
+                seconds_until_end = time_until(end_time, today)
+                
+                if seconds_until_end <= 0:
+                    # Lecture ended
+                    present_count = active_lecture.attendance_records.filter(status='present').count()
+                    total_count = active_lecture.attendance_records.count()
+                    absent_count = total_count - present_count
+                    
+                    print(f"\n⏹️  LECTURE ENDED: {active_lecture.timetable.subject.name}")
+                    print(f"   Class: {active_lecture.timetable.classroom.name}")
+                    print(f"   Present: {present_count}/{total_count}")
+                    print(f"   Absent: {absent_count}")
+                    
+                    active_lecture.end_lecture()
+                    
+                    # Check if there's another lecture soon IN THIS ROOM
+                    next_tt, next_date = get_next_lecture_info()
+                    
+                    if next_tt and next_date == today:
+                        seconds_to_next = time_until(next_tt.start_time, next_date)
+                        
+                        # Check if same class continues (back-to-back)
+                        if next_tt.classroom == current_classroom:
+                            print(f"\n📋 Same class continues: {next_tt.subject.name}")
+                            print(f"   Attendance will be carried forward")
+                        else:
+                            print(f"\n🔄 Different class next: {next_tt.classroom.name} - {next_tt.subject.name}")
+                            current_classroom = None  # Reset for new class
+                            marked_in_session.clear()
+                        
+                        if seconds_to_next < (EARLY_START_MINUTES + 5) * 60:
+                            print(f"   Starting in {int(seconds_to_next // 60)} minutes")
+                            active_lecture = None
+                            continue
+                    else:
+                        current_classroom = None
+                    
+                    active_lecture = None
+                    
+                    # No immediate next lecture, stop camera
+                    if not next_tt or next_date != today:
+                        stop_camera()
+                        current_timetable = None
+                        marked_in_session.clear()
+                    continue
+            
+            # Process camera frame if active
+            if camera_active and video:
+                check, frame = video.read()
+                
+                if check:
+                    # Recognize faces
+                    frame, recognized = face_recognizer.recognize_faces(frame)
+                    
+                    # Mark attendance if lecture is active
+                    if active_lecture and recognized:
+                        for name in recognized:
+                            if name not in marked_in_session and name != "Unknown":
+                                result = mark_attendance_for_face(name, active_lecture)
+                                if result.get('success'):
+                                    if not result.get('already_marked'):
+                                        print(f"✓ PRESENT: {result.get('student_name', name)}")
+                                    marked_in_session.add(name)
+                                elif 'not' in result.get('message', '').lower():
+                                    # Student from different class - just ignore silently
+                                    pass
+                    
+                    # Display info on frame
+                    if active_lecture:
+                        remaining = time_until(active_lecture.timetable.end_time, today)
+                        mins_remaining = max(0, int(remaining // 60))
+                        
+                        cv2.putText(frame, f"ROOM: {room.name}", 
+                                   (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(frame, f"CLASS: {active_lecture.timetable.classroom.name}", 
+                                   (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        cv2.putText(frame, f"LECTURE: {active_lecture.timetable.subject.name}", 
+                                   (10, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        cv2.putText(frame, f"Time left: {mins_remaining} min | Present: {len(marked_in_session)}", 
+                                   (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                        
+                        if active_lecture.carried_from:
+                            cv2.putText(frame, "* Attendance carried forward", 
+                                       (10, 125), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+                    else:
+                        cv2.putText(frame, f"ROOM: {room.name}", 
+                                   (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(frame, "Waiting for lecture...", 
+                                   (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 165, 0), 2)
+                        if current_timetable:
+                            cv2.putText(frame, f"Next: {current_timetable.classroom.name} - {current_timetable.subject.name}", 
+                                       (10, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
+                            cv2.putText(frame, f"At: {current_timetable.start_time}", 
+                                       (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
+                    
+                    cv2.imshow(f"Auto Attendance - {room.name}", frame)
+                
+                key = cv2.waitKey(1)
+                if key == ord('q'):
+                    break
+            else:
+                # No camera, just wait
+                time_module.sleep(1)
+    
+    except KeyboardInterrupt:
+        print("\n\nShutting down...")
+    
+    finally:
+        if active_lecture:
+            print(f"Ending active lecture: {active_lecture.timetable.subject.name}")
+            active_lecture.end_lecture()
+        stop_camera()
+        print("Auto attendance stopped.")
+
+
+def setup_sample_data():
+    """Create sample data for testing"""
+    import django
+    django.setup()
+    
+    from django.contrib.auth.models import User
+    from core.models import Room, Classroom, Student, Teacher, Subject, Timetable
+    
+    print("Setting up sample data...")
+    
+    # Create rooms (physical locations with cameras)
+    room, _ = Room.objects.get_or_create(
+        name="Room 101",
+        defaults={'description': 'Main lecture hall - Ground Floor', 'camera_index': 0}
+    )
+    print(f"  ✓ Room: {room.name} (camera index: {room.camera_index})")
+    
+    room2, _ = Room.objects.get_or_create(
+        name="Room 102",
+        defaults={'description': 'Computer Lab - Ground Floor', 'camera_index': 1}
+    )
+    print(f"  ✓ Room: {room2.name} (camera index: {room2.camera_index})")
+    
+    # Create classrooms (student divisions - these use rooms at different times)
+    classroom, _ = Classroom.objects.get_or_create(
+        name="CS-A",
+        defaults={'description': 'Computer Science Section A'}
+    )
+    print(f"  ✓ Classroom: {classroom.name}")
+    
+    classroom2, _ = Classroom.objects.get_or_create(
+        name="CS-B",
+        defaults={'description': 'Computer Science Section B'}
+    )
+    print(f"  ✓ Classroom: {classroom2.name}")
+    
+    # Create subjects
+    subjects_data = [
+        ('CS101', 'Data Structures'),
+        ('CS102', 'Database Management'),
+        ('CS103', 'Operating Systems'),
+    ]
+    subjects = []
+    for code, name in subjects_data:
+        subject, _ = Subject.objects.get_or_create(code=code, defaults={'name': name})
+        subjects.append(subject)
+        print(f"  ✓ Subject: {subject}")
+    
+    # Create teachers
+    teachers_data = ['Dr. Smith', 'Prof. Johnson', 'Dr. Williams']
+    teachers = []
+    for name in teachers_data:
+        teacher, _ = Teacher.objects.get_or_create(name=name)
+        teachers.append(teacher)
+        print(f"  ✓ Teacher: {teacher.name}")
+    
+    # Create a sample student (you'll need to create their folder in known_faces/)
+    # First check if any folders exist in known_faces
+    known_faces_dir = "known_faces"
+    if os.path.exists(known_faces_dir):
+        for person_name in os.listdir(known_faces_dir):
+            person_dir = os.path.join(known_faces_dir, person_name)
+            if os.path.isdir(person_dir):
+                # Create user for this person
+                username = person_name.lower().replace(' ', '_')
+                user, created = User.objects.get_or_create(
+                    username=username,
+                    defaults={'first_name': person_name}
+                )
+                if created:
+                    user.set_password('password123')  # Default password
+                    user.save()
+                
+                # Create student
+                student, created = Student.objects.get_or_create(
+                    face_folder_name=person_name,
+                    defaults={
+                        'user': user,
+                        'roll_no': f'CS{Student.objects.count() + 1:03d}',
+                        'name': person_name,
+                        'classroom': classroom
+                    }
+                )
+                print(f"  ✓ Student: {student.name} (login: {username}, password: password123)")
+    
+    # Create timetable entries for each day
+    # CS-A uses Room 101 in the morning, CS-B uses Room 101 in the afternoon
+    import datetime
+    
+    # Morning slots for CS-A in Room 101
+    morning_times = [
+        (datetime.time(9, 0), datetime.time(10, 0)),
+        (datetime.time(10, 0), datetime.time(11, 0)),   # Back-to-back with previous
+        (datetime.time(11, 30), datetime.time(12, 30)),
+    ]
+    
+    # Afternoon slots for CS-B in Room 101 (same room, different class)
+    afternoon_times = [
+        (datetime.time(14, 0), datetime.time(15, 0)),
+        (datetime.time(15, 0), datetime.time(16, 0)),   # Back-to-back with previous
+    ]
+    
+    for day in range(5):  # Monday to Friday
+        # CS-A morning lectures in Room 101
+        for idx, (start, end) in enumerate(morning_times):
+            subject = subjects[idx % len(subjects)]
+            teacher = teachers[idx % len(teachers)]
+            
+            Timetable.objects.get_or_create(
+                room=room,  # Room 101
+                classroom=classroom,  # CS-A
+                day_of_week=day,
+                start_time=start,
+                defaults={
+                    'subject': subject,
+                    'teacher': teacher,
+                    'end_time': end
+                }
+            )
+        
+        # CS-B afternoon lectures in Room 101 (same room!)
+        for idx, (start, end) in enumerate(afternoon_times):
+            subject = subjects[idx % len(subjects)]
+            teacher = teachers[idx % len(teachers)]
+            
+            Timetable.objects.get_or_create(
+                room=room,  # Room 101 (same room as CS-A)
+                classroom=classroom2,  # CS-B (different class)
+                day_of_week=day,
+                start_time=start,
+                defaults={
+                    'subject': subject,
+                    'teacher': teacher,
+                    'end_time': end
+                }
+            )
+    
+    print(f"  ✓ Timetable created for {classroom.name} (morning in {room.name})")
+    print(f"  ✓ Timetable created for {classroom2.name} (afternoon in {room.name})")
+    print("\nSetup complete!")
+    print("\nNext steps:")
+    print("  1. Run 'python main.py runserver' to start web server")
+    print("  2. Visit http://127.0.0.1:8000/admin/ to manage data")
+    print("  3. Run 'python main.py auto \"Room 101\"' to start auto attendance for a room")
+
+
+def main():
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        
+        if command == 'runserver':
+            run_django_command(['runserver'])
+        
+        elif command == 'auto':
+            # Auto attendance mode - now room-based
+            room_name = sys.argv[2] if len(sys.argv) > 2 else None
+            run_auto_attendance(room_name)
+        
+        elif command == 'migrate':
+            run_django_command(['makemigrations', 'core'])
+            run_django_command(['migrate'])
+        
+        elif command == 'createsuperuser':
+            run_django_command(['createsuperuser'])
+        
+        elif command == 'setup':
+            # Run migrations first
+            run_django_command(['makemigrations', 'core'])
+            run_django_command(['migrate'])
+            # Then create sample data
+            setup_sample_data()
+        
+        elif command == 'shell':
+            run_django_command(['shell'])
+        
+        else:
+            # Pass through to Django management
+            run_django_command(sys.argv[1:])
+    else:
+        # Run face recognition by default
+        run_face_recognition()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block title %}Attendance History - {{ student.name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2><i class="bi bi-calendar-check"></i> Attendance History</h2>
+        <p class="text-white-50">View and filter your complete attendance record</p>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Subject</label>
+                <select name="subject" class="form-select">
+                    <option value="">All Subjects</option>
+                    {% for subject in subjects %}
+                    <option value="{{ subject.id }}" {% if selected_subject == subject.id|stringformat:"s" %}selected{% endif %}>
+                        {{ subject.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">All</option>
+                    <option value="present" {% if selected_status == 'present' %}selected{% endif %}>Present</option>
+                    <option value="absent" {% if selected_status == 'absent' %}selected{% endif %}>Absent</option>
+                    <option value="late" {% if selected_status == 'late' %}selected{% endif %}>Late</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">From Date</label>
+                <input type="date" name="date_from" class="form-control" value="{{ date_from }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">To Date</label>
+                <input type="date" name="date_to" class="form-control" value="{{ date_to }}">
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-funnel"></i> Filter
+                </button>
+                <a href="{% url 'attendance_history' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-lg"></i> Clear
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Attendance Table -->
+<div class="card">
+    <div class="card-body">
+        {% if attendance_records %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Day</th>
+                        <th>Subject</th>
+                        <th>Teacher</th>
+                        <th>Time</th>
+                        <th>Status</th>
+                        <th>Marked At</th>
+                        <th>Method</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in attendance_records %}
+                    <tr>
+                        <td>{{ record.lecture.date|date:"d M Y" }}</td>
+                        <td>{{ record.lecture.date|date:"l" }}</td>
+                        <td><strong>{{ record.lecture.timetable.subject.name }}</strong></td>
+                        <td>{{ record.lecture.timetable.teacher.name }}</td>
+                        <td>
+                            <span class="badge bg-light text-dark">
+                                {{ record.lecture.timetable.start_time|time:"H:i" }} - {{ record.lecture.timetable.end_time|time:"H:i" }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge badge-{{ record.status }}">
+                                {% if record.status == 'present' %}
+                                <i class="bi bi-check-circle"></i>
+                                {% elif record.status == 'absent' %}
+                                <i class="bi bi-x-circle"></i>
+                                {% else %}
+                                <i class="bi bi-clock"></i>
+                                {% endif %}
+                                {{ record.status|title }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if record.marked_at %}
+                            {{ record.marked_at|time:"H:i:s" }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if record.marked_by_face_recognition %}
+                            <span class="badge bg-info">
+                                <i class="bi bi-camera"></i> Face
+                            </span>
+                            {% elif record.status == 'present' %}
+                            <span class="badge bg-secondary">
+                                <i class="bi bi-pencil"></i> Manual
+                            </span>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="bi bi-inbox text-muted" style="font-size: 4rem;"></i>
+            <h4 class="mt-3 text-muted">No attendance records found</h4>
+            <p class="text-muted">
+                {% if selected_subject or selected_status or date_from or date_to %}
+                Try adjusting your filters
+                {% else %}
+                Attendance will appear here once lectures begin
+                {% endif %}
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

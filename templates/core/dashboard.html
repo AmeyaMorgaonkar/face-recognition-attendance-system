@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - {{ student.name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center" 
+                             style="width: 80px; height: 80px;">
+                            <i class="bi bi-person-fill text-white" style="font-size: 2.5rem;"></i>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <h3 class="mb-1">Welcome, {{ student.name }}!</h3>
+                        <p class="text-muted mb-0">
+                            <i class="bi bi-hash"></i> {{ student.roll_no }} | 
+                            <i class="bi bi-building"></i> {{ student.classroom }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon text-primary"><i class="bi bi-calendar-check"></i></div>
+            <div class="stat-value">{{ total_lectures }}</div>
+            <div class="stat-label">Total Lectures</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon present"><i class="bi bi-check-circle-fill"></i></div>
+            <div class="stat-value present">{{ present_count }}</div>
+            <div class="stat-label">Present</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon absent"><i class="bi bi-x-circle-fill"></i></div>
+            <div class="stat-value absent">{{ absent_count }}</div>
+            <div class="stat-label">Absent</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="stat-card">
+            <div class="stat-icon" style="color: var(--primary-color);"><i class="bi bi-percent"></i></div>
+            <div class="stat-value" style="color: {% if attendance_percentage >= 75 %}var(--success-color){% elif attendance_percentage >= 50 %}var(--warning-color){% else %}var(--danger-color){% endif %};">
+                {{ attendance_percentage }}%
+            </div>
+            <div class="stat-label">Attendance</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Today's Schedule -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-clock"></i> Today's Schedule</h5>
+            </div>
+            <div class="card-body">
+                {% if todays_schedule %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Subject</th>
+                                <th>Teacher</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in todays_schedule %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-light text-dark">
+                                        {{ entry.start_time|time:"H:i" }} - {{ entry.end_time|time:"H:i" }}
+                                    </span>
+                                </td>
+                                <td><strong>{{ entry.subject.name }}</strong></td>
+                                <td>{{ entry.teacher.name }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="bi bi-calendar-x text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-2">No classes scheduled today!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Subject-wise Attendance -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Subject-wise Attendance</h5>
+            </div>
+            <div class="card-body">
+                {% if subject_attendance %}
+                {% for item in subject_attendance %}
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="fw-medium">{{ item.subject.name }}</span>
+                        <span class="{% if item.percentage >= 75 %}text-success{% elif item.percentage >= 50 %}text-warning{% else %}text-danger{% endif %}">
+                            {{ item.percentage }}% ({{ item.present }}/{{ item.total }})
+                        </span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar {% if item.percentage >= 75 %}bg-success{% elif item.percentage >= 50 %}bg-warning{% else %}bg-danger{% endif %}" 
+                             role="progressbar" 
+                             style="width: {{ item.percentage }}%"
+                             aria-valuenow="{{ item.percentage }}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="bi bi-graph-up text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-2">No attendance data yet</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Attendance -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Attendance</h5>
+                <a href="{% url 'attendance_history' %}" class="btn btn-sm btn-outline-light">View All</a>
+            </div>
+            <div class="card-body">
+                {% if recent_attendance %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Subject</th>
+                                <th>Teacher</th>
+                                <th>Status</th>
+                                <th>Marked At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in recent_attendance %}
+                            <tr>
+                                <td>{{ record.lecture.date|date:"d M Y" }}</td>
+                                <td><strong>{{ record.lecture.timetable.subject.name }}</strong></td>
+                                <td>{{ record.lecture.timetable.teacher.name }}</td>
+                                <td>
+                                    <span class="badge badge-{{ record.status }}">
+                                        {% if record.status == 'present' %}
+                                        <i class="bi bi-check-circle"></i>
+                                        {% elif record.status == 'absent' %}
+                                        <i class="bi bi-x-circle"></i>
+                                        {% else %}
+                                        <i class="bi bi-clock"></i>
+                                        {% endif %}
+                                        {{ record.status|title }}
+                                    </span>
+                                    {% if record.marked_by_face_recognition %}
+                                    <i class="bi bi-camera text-primary ms-1" title="Marked by Face Recognition"></i>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if record.marked_at %}
+                                    {{ record.marked_at|time:"H:i" }}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-2">No attendance records yet</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
