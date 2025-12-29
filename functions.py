@@ -185,7 +185,7 @@ class FaceRecognizer:
             # Draw label with name
             cv2.rectangle(frame, (x, y+h), (x+w, y+h+35), color, cv2.FILLED)
             cv2.putText(frame, label_text, (x+6, y+h+25), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
         
         return frame, recognized_names
     
