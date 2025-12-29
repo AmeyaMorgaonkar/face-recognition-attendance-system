@@ -1,18 +1,18 @@
 {% extends 'base.html' %}
 
-{% block title %}Login - Attendance System{% endblock %}
+{% block title %}Teacher Login - Attendance System{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center align-items-center" style="min-height: 80vh;">
     <div class="col-md-5 col-lg-4">
         <div class="card">
-            <div class="card-header text-center">
-                <h3 class="mb-0"><i class="bi bi-camera-video"></i></h3>
-                <h4 class="mb-0">Face Recognition</h4>
+            <div class="card-header text-center bg-success text-white">
+                <h3 class="mb-0"><i class="bi bi-person-workspace"></i></h3>
+                <h4 class="mb-0">Teacher Portal</h4>
                 <p class="mb-0 opacity-75">Attendance System</p>
             </div>
             <div class="card-body p-4">
-                <h5 class="text-center mb-4">Student Login</h5>
+                <h5 class="text-center mb-4">Teacher Login</h5>
                 
                 {% if form.errors %}
                 <div class="alert alert-danger">
@@ -25,32 +25,32 @@
                 </div>
                 {% endif %}
                 
+                {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+                {% endif %}
+                
                 <form method="post">
                     {% csrf_token %}
                     <div class="mb-3">
-                        <label class="form-label"><i class="bi bi-building"></i> Division</label>
-                        {{ form.division }}
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label"><i class="bi bi-hash"></i> Roll Number</label>
-                        {{ form.roll_no }}
+                        <label class="form-label"><i class="bi bi-envelope"></i> Email</label>
+                        {{ form.email }}
                     </div>
                     <div class="mb-4">
                         <label class="form-label"><i class="bi bi-lock"></i> Password</label>
                         {{ form.password }}
                     </div>
                     <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg">
+                        <button type="submit" class="btn btn-success btn-lg">
                             <i class="bi bi-box-arrow-in-right"></i> Login
                         </button>
                     </div>
                 </form>
             </div>
-            <div class="card-footer text-center text-muted py-3">
-                <small>Default password: <code>password123</code></small>
-                <hr class="my-2">
-                <a href="{% url 'teacher_login' %}" class="text-success">
-                    <i class="bi bi-person-workspace"></i> Teacher Login
+            <div class="card-footer text-center py-3">
+                <a href="{% url 'login' %}" class="text-muted">
+                    <i class="bi bi-mortarboard"></i> Student Login
                 </a>
             </div>
         </div>

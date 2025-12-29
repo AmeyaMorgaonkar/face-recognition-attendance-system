@@ -90,14 +90,17 @@ def run_face_recognition():
     
     def get_current_timetable_entry():
         """Get the timetable entry for the current time slot in this room."""
+        from django.db.models import Q
         now = timezone.localtime()
         current_time = now.time()
         current_day = now.weekday()
+        today = now.date()
         
         # Find timetable entry where current time is within start and end time
+        # Include both recurring entries and extra lectures for today
         return Timetable.objects.filter(
-            room=room,
-            day_of_week=current_day,
+            Q(room=room, day_of_week=current_day, is_recurring=True) |
+            Q(room=room, is_recurring=False, extra_date=today),
             start_time__lte=current_time,
             end_time__gt=current_time
         ).select_related('classroom', 'subject', 'teacher').first()
@@ -230,10 +233,12 @@ def run_face_recognition():
         else:
             cv2.putText(frame, "No active lecture", (10, 30),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            # Show next lecture
+            # Show next lecture (recurring or extra for today)
+            from django.db.models import Q
+            today = now.date()
             next_lecture = Timetable.objects.filter(
-                room=room,
-                day_of_week=now.weekday(),
+                Q(room=room, day_of_week=now.weekday(), is_recurring=True) |
+                Q(room=room, is_recurring=False, extra_date=today),
                 start_time__gt=now.time()
             ).order_by('start_time').first()
             if next_lecture:
@@ -660,6 +665,7 @@ def setup_sample_data():
     
     from django.contrib.auth.models import User
     from core.models import Room, Classroom, Student, Teacher, Subject, Timetable
+    import datetime
     
     print("Setting up sample data...")
     
@@ -676,24 +682,25 @@ def setup_sample_data():
     )
     print(f"  ✓ Room: {room2.name} (camera index: {room2.camera_index})")
     
-    # Create classrooms (student divisions - these use rooms at different times)
-    classroom, _ = Classroom.objects.get_or_create(
+    # Create classrooms (student divisions)
+    cs_a, _ = Classroom.objects.get_or_create(
         name="CS-A",
         defaults={'description': 'Computer Science Section A'}
     )
-    print(f"  ✓ Classroom: {classroom.name}")
+    print(f"  ✓ Division: {cs_a.name}")
     
-    classroom2, _ = Classroom.objects.get_or_create(
+    cs_b, _ = Classroom.objects.get_or_create(
         name="CS-B",
         defaults={'description': 'Computer Science Section B'}
     )
-    print(f"  ✓ Classroom: {classroom2.name}")
+    print(f"  ✓ Division: {cs_b.name}")
     
-    # Create subjects
+    # Create subjects (4 subjects for 4 hours per day)
     subjects_data = [
         ('CS101', 'Data Structures'),
         ('CS102', 'Database Management'),
         ('CS103', 'Operating Systems'),
+        ('CS104', 'Computer Networks'),
     ]
     subjects = []
     for code, name in subjects_data:
@@ -702,101 +709,125 @@ def setup_sample_data():
         print(f"  ✓ Subject: {subject}")
     
     # Create teachers
-    teachers_data = ['Dr. Smith', 'Prof. Johnson', 'Dr. Williams']
+    teachers_data = ['Dr. Smith', 'Prof. Johnson', 'Dr. Williams', 'Prof. Davis']
     teachers = []
     for name in teachers_data:
         teacher, _ = Teacher.objects.get_or_create(name=name)
         teachers.append(teacher)
         print(f"  ✓ Teacher: {teacher.name}")
     
-    # Create a sample student (you'll need to create their folder in known_faces/)
-    # First check if any folders exist in known_faces
-    known_faces_dir = "known_faces"
-    if os.path.exists(known_faces_dir):
-        for person_name in os.listdir(known_faces_dir):
-            person_dir = os.path.join(known_faces_dir, person_name)
-            if os.path.isdir(person_dir):
-                # Create user for this person
-                username = person_name.lower().replace(' ', '_')
-                user, created = User.objects.get_or_create(
-                    username=username,
-                    defaults={'first_name': person_name}
-                )
-                if created:
-                    user.set_password('password123')  # Default password
-                    user.save()
-                
-                # Create student
-                student, created = Student.objects.get_or_create(
-                    face_folder_name=person_name,
-                    defaults={
-                        'user': user,
-                        'roll_no': f'CS{Student.objects.count() + 1:03d}',
-                        'name': person_name,
-                        'classroom': classroom
-                    }
-                )
-                print(f"  ✓ Student: {student.name} (login: {username}, password: password123)")
+    # Create 5 students for each division
+    student_names = {
+        'CS-A': ['Ameya', 'Rahul', 'Priya', 'Sneha', 'Arjun'],
+        'CS-B': ['Vikram', 'Neha', 'Rohan', 'Ananya', 'Karan']
+    }
     
-    # Create timetable entries for each day
-    # CS-A uses Room 101 in the morning, CS-B uses Room 101 in the afternoon
-    import datetime
+    print("\n  Creating students...")
+    for division, classroom in [('CS-A', cs_a), ('CS-B', cs_b)]:
+        for idx, name in enumerate(student_names[division], 1):
+            roll_no = f"{idx:03d}"  # 001, 002, 003, etc.
+            # Make roll_no unique by including division
+            unique_roll_no = f"{division}-{roll_no}"  # CS-A-001, CS-B-001
+            username = f"{division.lower().replace('-', '')}_{roll_no}"  # csa_001, csb_001
+            
+            # Create user
+            user, created = User.objects.get_or_create(
+                username=username,
+                defaults={'first_name': name}
+            )
+            if created:
+                user.set_password('password123')
+                user.save()
+            
+            # Create student
+            student, created = Student.objects.get_or_create(
+                roll_no=unique_roll_no,
+                classroom=classroom,
+                defaults={
+                    'user': user,
+                    'name': name,
+                    'face_folder_name': f"{division}_{roll_no}"
+                }
+            )
+            if created:
+                print(f"    ✓ {division} - {roll_no}: {name} (login: {division} + {roll_no})")
     
-    # Morning slots for CS-A in Room 101
-    morning_times = [
+    # Clear existing timetable for clean setup
+    Timetable.objects.filter(classroom__in=[cs_a, cs_b]).delete()
+    
+    # Create weekly timetable (same every week, Mon-Fri, 4 hours per day)
+    # CS-A: 9:00-13:00, CS-B: 14:00-18:00 (both in Room 101)
+    
+    # Time slots (4 one-hour lectures per day)
+    cs_a_times = [
         (datetime.time(9, 0), datetime.time(10, 0)),
-        (datetime.time(10, 0), datetime.time(11, 0)),   # Back-to-back with previous
+        (datetime.time(10, 0), datetime.time(11, 0)),
         (datetime.time(11, 30), datetime.time(12, 30)),
+        (datetime.time(12, 30), datetime.time(13, 30)),
     ]
     
-    # Afternoon slots for CS-B in Room 101 (same room, different class)
-    afternoon_times = [
+    cs_b_times = [
         (datetime.time(14, 0), datetime.time(15, 0)),
-        (datetime.time(15, 0), datetime.time(16, 0)),   # Back-to-back with previous
+        (datetime.time(15, 0), datetime.time(16, 0)),
+        (datetime.time(16, 30), datetime.time(17, 30)),
+        (datetime.time(17, 30), datetime.time(18, 30)),
     ]
     
+    print("\n  Creating timetable...")
     for day in range(5):  # Monday to Friday
-        # CS-A morning lectures in Room 101
-        for idx, (start, end) in enumerate(morning_times):
+        day_name = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][day]
+        
+        # CS-A morning lectures
+        for idx, (start, end) in enumerate(cs_a_times):
             subject = subjects[idx % len(subjects)]
             teacher = teachers[idx % len(teachers)]
             
-            Timetable.objects.get_or_create(
-                room=room,  # Room 101
-                classroom=classroom,  # CS-A
+            Timetable.objects.create(
+                room=room,
+                classroom=cs_a,
                 day_of_week=day,
                 start_time=start,
-                defaults={
-                    'subject': subject,
-                    'teacher': teacher,
-                    'end_time': end
-                }
+                end_time=end,
+                subject=subject,
+                teacher=teacher
             )
         
-        # CS-B afternoon lectures in Room 101 (same room!)
-        for idx, (start, end) in enumerate(afternoon_times):
+        # CS-B afternoon lectures
+        for idx, (start, end) in enumerate(cs_b_times):
             subject = subjects[idx % len(subjects)]
             teacher = teachers[idx % len(teachers)]
             
-            Timetable.objects.get_or_create(
-                room=room,  # Room 101 (same room as CS-A)
-                classroom=classroom2,  # CS-B (different class)
+            Timetable.objects.create(
+                room=room,
+                classroom=cs_b,
                 day_of_week=day,
                 start_time=start,
-                defaults={
-                    'subject': subject,
-                    'teacher': teacher,
-                    'end_time': end
-                }
+                end_time=end,
+                subject=subject,
+                teacher=teacher
             )
     
-    print(f"  ✓ Timetable created for {classroom.name} (morning in {room.name})")
-    print(f"  ✓ Timetable created for {classroom2.name} (afternoon in {room.name})")
-    print("\nSetup complete!")
+    print(f"    ✓ {cs_a.name}: 9:00 AM - 1:30 PM in {room.name}")
+    print(f"    ✓ {cs_b.name}: 2:00 PM - 6:30 PM in {room.name}")
+    
+    print("\n" + "="*60)
+    print("SETUP COMPLETE!")
+    print("="*60)
+    print("\nStudents created (5 per division):")
+    print("-"*40)
+    print(f"{'Division':<10} {'Roll No':<10} {'Name':<15} {'Password'}")
+    print("-"*40)
+    for division, classroom in [('CS-A', cs_a), ('CS-B', cs_b)]:
+        for student in Student.objects.filter(classroom=classroom):
+            print(f"{division:<10} {student.roll_no:<10} {student.name:<15} password123")
+    print("-"*40)
+    print("\nLogin using: Division + Roll Number + Password")
+    print("Example: Select 'CS-A', enter '001', password 'password123'")
     print("\nNext steps:")
     print("  1. Run 'python main.py runserver' to start web server")
-    print("  2. Visit http://127.0.0.1:8000/admin/ to manage data")
-    print("  3. Run 'python main.py auto \"Room 101\"' to start auto attendance for a room")
+    print("  2. Visit http://127.0.0.1:8000/ to login")
+    print("  3. Upload 3 photos for each student from dashboard")
+    print("  4. Run 'python main.py' to start face recognition")
 
 
 def main():

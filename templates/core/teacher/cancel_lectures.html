@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+
+{% block title %}Cancel Lectures - {{ teacher.name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="bi bi-calendar-x"></i> Cancel Lectures</h2>
+                <p class="text-muted mb-0">Cancel specific lectures for a date (won't affect weekly timetable)</p>
+            </div>
+            <a href="{% url 'teacher_dashboard' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+<div class="row mb-3">
+    <div class="col-12">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Date Selector -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3 align-items-end">
+                    <div class="col-md-8">
+                        <label class="form-label"><i class="bi bi-calendar"></i> Select Date</label>
+                        <input type="date" name="date" class="form-control" 
+                               value="{{ selected_date|date:'Y-m-d' }}"
+                               min="{{ today|date:'Y-m-d' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> View
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Lectures for Selected Date -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-calendar3"></i> 
+                    Lectures on {{ selected_date|date:"l, d F Y" }} ({{ day_name }})
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if lectures_with_status %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Class</th>
+                                <th>Subject</th>
+                                <th>Room</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in lectures_with_status %}
+                            <tr class="{% if item.is_cancelled %}table-danger{% endif %}">
+                                <td>
+                                    <span class="badge bg-primary">
+                                        {{ item.timetable.start_time|time:"H:i" }} - {{ item.timetable.end_time|time:"H:i" }}
+                                    </span>
+                                </td>
+                                <td><strong>{{ item.timetable.classroom }}</strong></td>
+                                <td>{{ item.timetable.subject.name }}</td>
+                                <td>{{ item.timetable.room }}</td>
+                                <td>
+                                    {% if item.is_cancelled %}
+                                    <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Cancelled</span>
+                                    {% else %}
+                                    <span class="badge bg-success"><i class="bi bi-check-circle"></i> Scheduled</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.is_cancelled %}
+                                    <form method="post" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="uncancel">
+                                        <input type="hidden" name="timetable_id" value="{{ item.timetable.id }}">
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Restore
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <button type="button" class="btn btn-sm btn-danger" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#cancelModal{{ item.timetable.id }}">
+                                        <i class="bi bi-x-circle"></i> Cancel
+                                    </button>
+                                    
+                                    <!-- Cancel Modal -->
+                                    <div class="modal fade" id="cancelModal{{ item.timetable.id }}" tabindex="-1">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <form method="post">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="action" value="cancel">
+                                                    <input type="hidden" name="timetable_id" value="{{ item.timetable.id }}">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Cancel Lecture</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <p>Cancel <strong>{{ item.timetable.subject.name }}</strong> for <strong>{{ item.timetable.classroom }}</strong> on {{ selected_date|date:"d M Y" }}?</p>
+                                                        <div class="mb-3">
+                                                            <label class="form-label">Reason (optional)</label>
+                                                            <input type="text" name="reason" class="form-control" placeholder="e.g., Teacher unavailable">
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                                        <button type="submit" class="btn btn-danger">Cancel Lecture</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-calendar-x text-muted" style="font-size: 4rem;"></i>
+                    <h5 class="text-muted mt-3">No lectures scheduled</h5>
+                    <p class="text-muted">You don't have any lectures on {{ day_name }}.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bottom Spacing -->
+<div class="mb-5 pb-4"></div>
+{% endblock %}

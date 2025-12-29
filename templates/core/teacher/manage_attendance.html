@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+
+{% block title %}Manage Attendance - {{ lecture.subject }}{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card {% if lecture.status == 'active' %}border-success{% endif %}">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h4 class="mb-1">
+                            {{ lecture.subject.name }}
+                            {% if lecture.status == 'active' %}
+                            <span class="badge bg-success ms-2"><i class="bi bi-broadcast"></i> Live</span>
+                            {% elif lecture.status == 'completed' %}
+                            <span class="badge bg-secondary ms-2"><i class="bi bi-check-circle"></i> Completed</span>
+                            {% endif %}
+                        </h4>
+                        <p class="text-muted mb-0">
+                            <i class="bi bi-building"></i> {{ lecture.classroom }} |
+                            <i class="bi bi-calendar"></i> {{ lecture.date|date:"d M Y" }} |
+                            <i class="bi bi-clock"></i> {{ lecture.timetable.start_time|time:"H:i" }} - {{ lecture.timetable.end_time|time:"H:i" }} |
+                            <i class="bi bi-geo-alt"></i> {{ lecture.room }}
+                        </p>
+                    </div>
+                    <div class="col-auto">
+                        <a href="{% url 'teacher_dashboard' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Back
+                        </a>
+                        {% if lecture.status == 'active' %}
+                        <a href="{% url 'teacher_end_lecture' lecture.id %}" 
+                           class="btn btn-danger"
+                           onclick="return confirm('End this lecture?');">
+                            <i class="bi bi-stop-fill"></i> End Lecture
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="row mb-4 g-3">
+    <div class="col-md-3 col-6">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <h2 class="text-primary mb-0">{{ total }}</h2>
+                <small class="text-muted">Total Students</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card text-center h-100 border-success">
+            <div class="card-body">
+                <h2 class="text-success mb-0">{{ present }}</h2>
+                <small class="text-muted">Present</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card text-center h-100 border-danger">
+            <div class="card-body">
+                <h2 class="text-danger mb-0">{{ absent }}</h2>
+                <small class="text-muted">Absent</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <h2 class="{% if percentage >= 75 %}text-success{% elif percentage >= 50 %}text-warning{% else %}text-danger{% endif %} mb-0">{{ percentage }}%</h2>
+                <small class="text-muted">Attendance</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+<div class="row mb-3">
+    <div class="col-12">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Attendance Form -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-people"></i> Student Attendance</h5>
+                <div>
+                    <button type="button" class="btn btn-sm btn-success" onclick="selectAll()">
+                        <i class="bi bi-check-all"></i> Select All
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deselectAll()">
+                        <i class="bi bi-x-lg"></i> Deselect All
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <form method="post" id="attendance-form">
+                    {% csrf_token %}
+                    
+                    <div class="row g-3">
+                        {% for record in attendance_records %}
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card h-100 {% if record.status == 'present' %}border-success bg-success bg-opacity-10{% else %}border-danger bg-danger bg-opacity-10{% endif %} attendance-card"
+                                 data-student-id="{{ record.student.id }}"
+                                 onclick="toggleAttendance(this)">
+                                <div class="card-body py-2 px-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="form-check me-2">
+                                            <input type="checkbox" 
+                                                   class="form-check-input student-checkbox" 
+                                                   name="present_students" 
+                                                   value="{{ record.student.id }}"
+                                                   id="student-{{ record.student.id }}"
+                                                   {% if record.status == 'present' %}checked{% endif %}
+                                                   style="width: 20px; height: 20px;">
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <strong>{{ record.student.roll_no }}</strong>
+                                            <br>
+                                            <small class="text-muted">{{ record.student.name }}</small>
+                                        </div>
+                                        <div>
+                                            {% if record.marked_by_face_recognition %}
+                                            <i class="bi bi-camera text-primary" title="Marked by Face Recognition"></i>
+                                            {% endif %}
+                                            {% if record.status == 'present' %}
+                                            <i class="bi bi-check-circle-fill text-success"></i>
+                                            {% else %}
+                                            <i class="bi bi-x-circle-fill text-danger"></i>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="col-12">
+                            <div class="text-center py-4">
+                                <i class="bi bi-people text-muted" style="font-size: 3rem;"></i>
+                                <p class="text-muted mt-2">No students in this class</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    {% if attendance_records %}
+                    <div class="mt-4 text-center">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-save"></i> Save Attendance
+                        </button>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bottom Spacing -->
+<div class="mb-5 pb-4"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAttendance(card) {
+    const checkbox = card.querySelector('.student-checkbox');
+    checkbox.checked = !checkbox.checked;
+    updateCardStyle(card, checkbox.checked);
+}
+
+function updateCardStyle(card, isPresent) {
+    card.classList.remove('border-success', 'border-danger', 'bg-success', 'bg-danger', 'bg-opacity-10');
+    if (isPresent) {
+        card.classList.add('border-success', 'bg-success', 'bg-opacity-10');
+    } else {
+        card.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
+    }
+    
+    // Update icon
+    const icon = card.querySelector('.bi-check-circle-fill, .bi-x-circle-fill');
+    if (icon) {
+        if (isPresent) {
+            icon.classList.remove('bi-x-circle-fill', 'text-danger');
+            icon.classList.add('bi-check-circle-fill', 'text-success');
+        } else {
+            icon.classList.remove('bi-check-circle-fill', 'text-success');
+            icon.classList.add('bi-x-circle-fill', 'text-danger');
+        }
+    }
+}
+
+function selectAll() {
+    document.querySelectorAll('.student-checkbox').forEach(cb => {
+        cb.checked = true;
+        updateCardStyle(cb.closest('.attendance-card'), true);
+    });
+}
+
+function deselectAll() {
+    document.querySelectorAll('.student-checkbox').forEach(cb => {
+        cb.checked = false;
+        updateCardStyle(cb.closest('.attendance-card'), false);
+    });
+}
+
+// Prevent card click from triggering when clicking checkbox directly
+document.querySelectorAll('.student-checkbox').forEach(cb => {
+    cb.addEventListener('click', function(e) {
+        e.stopPropagation();
+        updateCardStyle(this.closest('.attendance-card'), this.checked);
+    });
+});
+</script>
+{% endblock %}

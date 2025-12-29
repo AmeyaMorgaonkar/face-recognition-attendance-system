@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+
+{% block title %}My Timetable - {{ teacher.name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="bi bi-calendar-week"></i> My Weekly Timetable</h2>
+                <p class="text-muted mb-0">{{ teacher.name }}</p>
+            </div>
+            <a href="{% url 'teacher_dashboard' %}" class="btn btn-primary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body p-0">
+                {% if timetable_by_day %}
+                <div class="table-responsive">
+                    <table class="table table-bordered mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 12%;">Day</th>
+                                <th style="width: 15%;">Time</th>
+                                <th style="width: 15%;">Class</th>
+                                <th style="width: 25%;">Subject</th>
+                                <th style="width: 18%;">Room</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for day, entries in timetable_by_day.items %}
+                                {% for entry in entries %}
+                                <tr>
+                                    {% if forloop.first %}
+                                    <td rowspan="{{ entries.count }}" class="align-middle fw-bold bg-light">
+                                        {{ day }}
+                                    </td>
+                                    {% endif %}
+                                    <td>
+                                        <span class="badge bg-primary">
+                                            {{ entry.start_time|time:"H:i" }} - {{ entry.end_time|time:"H:i" }}
+                                        </span>
+                                    </td>
+                                    <td><strong>{{ entry.classroom }}</strong></td>
+                                    <td>
+                                        <strong>{{ entry.subject.name }}</strong>
+                                        <br><small class="text-muted">{{ entry.subject.code }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">
+                                            <i class="bi bi-geo-alt"></i> {{ entry.room }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-calendar-x text-muted" style="font-size: 4rem;"></i>
+                    <h4 class="text-muted mt-3">No timetable available</h4>
+                    <p class="text-muted">Contact your administrator to set up the timetable.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bottom Spacing -->
+<div class="mb-5 pb-4"></div>
+{% endblock %}

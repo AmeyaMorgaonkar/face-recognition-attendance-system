@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+
+{% block title %}Schedule Extra Lecture{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="bi bi-plus-circle"></i> Schedule Extra Lecture</h2>
+                <p class="text-muted mb-0">Schedule an additional class outside regular timetable</p>
+            </div>
+            <a href="{% url 'teacher_dashboard' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+<div class="row mb-3">
+    <div class="col-12">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-calendar-plus"></i> Lecture Details</h5>
+            </div>
+            <div class="card-body">
+                {% if form.errors %}
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    {% for error in form.non_field_errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><i class="bi bi-building"></i> Class</label>
+                        {{ form.classroom }}
+                        {% if form.classroom.errors %}
+                        <div class="invalid-feedback d-block">{{ form.classroom.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><i class="bi bi-book"></i> Subject</label>
+                        {{ form.subject }}
+                        {% if form.subject.errors %}
+                        <div class="invalid-feedback d-block">{{ form.subject.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><i class="bi bi-geo-alt"></i> Room</label>
+                        {{ form.room }}
+                        {% if form.room.errors %}
+                        <div class="invalid-feedback d-block">{{ form.room.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><i class="bi bi-calendar"></i> Date</label>
+                        {{ form.date }}
+                        {% if form.date.errors %}
+                        <div class="invalid-feedback d-block">{{ form.date.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label"><i class="bi bi-clock"></i> Start Time</label>
+                                {{ form.start_time }}
+                                {% if form.start_time.errors %}
+                                <div class="invalid-feedback d-block">{{ form.start_time.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mb-3">
+                                <label class="form-label"><i class="bi bi-clock-fill"></i> End Time</label>
+                                {{ form.end_time }}
+                                {% if form.end_time.errors %}
+                                <div class="invalid-feedback d-block">{{ form.end_time.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-success btn-lg">
+                            <i class="bi bi-check-circle"></i> Schedule Lecture
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-body">
+                <h6><i class="bi bi-info-circle"></i> Notes</h6>
+                <ul class="mb-0 text-muted small">
+                    <li>Extra lectures are one-time additions to the regular schedule</li>
+                    <li>Cannot schedule if the class already has a lecture at that time</li>
+                    <li>Cannot schedule if the room is already booked</li>
+                    <li>The lecture will be created as "Scheduled" - you can start it from the dashboard</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bottom Spacing -->
+<div class="mb-5 pb-4"></div>
+{% endblock %}
