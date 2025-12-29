@@ -55,6 +55,22 @@ class Student(models.Model):
     classroom = models.ForeignKey(Classroom, on_delete=models.CASCADE, related_name='students')
     face_folder_name = models.CharField(max_length=100, blank=True, help_text="Folder name in known_faces/")
     
+    # Photo paths (stored relative to known_faces folder)
+    photo_straight = models.CharField(max_length=255, blank=True, help_text="Front-facing photo path")
+    photo_left = models.CharField(max_length=255, blank=True, help_text="Looking left photo path")
+    photo_right = models.CharField(max_length=255, blank=True, help_text="Looking right photo path")
+    
+    def get_profile_photo_url(self):
+        """Get the straight photo as profile photo"""
+        if self.photo_straight:
+            return f'/media/known_faces/{self.photo_straight}'
+        return None
+    
+    def get_face_folder(self):
+        """Get the folder name for this student's face photos"""
+        # Format: DivisionName_RollNo (e.g., CS-A_001)
+        return f"{self.classroom.name}_{self.roll_no}"
+    
     def __str__(self):
         return f"{self.roll_no} - {self.name}"
     
@@ -114,6 +130,8 @@ class Timetable(models.Model):
     day_of_week = models.IntegerField(choices=DAYS_OF_WEEK)
     start_time = models.TimeField()
     end_time = models.TimeField()
+    is_recurring = models.BooleanField(default=True, help_text="False for extra/one-time lectures")
+    extra_date = models.DateField(null=True, blank=True, help_text="Specific date for non-recurring lectures")
     
     def __str__(self):
         return f"{self.room} | {self.classroom} - {self.subject} ({self.get_day_of_week_display()} {self.start_time})"
@@ -267,3 +285,22 @@ class Attendance(models.Model):
     class Meta:
         unique_together = ['lecture', 'student']
         ordering = ['student__roll_no']
+
+
+class CancelledLecture(models.Model):
+    """
+    Tracks cancelled lectures for specific dates.
+    The timetable entry remains, but the lecture is cancelled for this date.
+    """
+    timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='cancellations')
+    date = models.DateField()
+    reason = models.CharField(max_length=255, blank=True)
+    cancelled_by = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True)
+    cancelled_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.timetable.subject} - {self.timetable.classroom} cancelled on {self.date}"
+    
+    class Meta:
+        unique_together = ['timetable', 'date']
+        ordering = ['-date']

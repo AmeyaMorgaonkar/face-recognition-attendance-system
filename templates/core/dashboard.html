@@ -9,10 +9,17 @@
             <div class="card-body">
                 <div class="row align-items-center">
                     <div class="col-auto">
+                        {% if student.photo_straight %}
+                        <img src="/media/known_faces/{{ student.photo_straight }}" 
+                             alt="Profile Photo" 
+                             class="rounded-circle"
+                             style="width: 80px; height: 80px; object-fit: cover;">
+                        {% else %}
                         <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center" 
                              style="width: 80px; height: 80px;">
                             <i class="bi bi-person-fill text-white" style="font-size: 2.5rem;"></i>
                         </div>
+                        {% endif %}
                     </div>
                     <div class="col">
                         <h3 class="mb-1">Welcome, {{ student.name }}!</h3>
@@ -21,7 +28,192 @@
                             <i class="bi bi-building"></i> {{ student.classroom }}
                         </p>
                     </div>
+                    <div class="col-auto">
+                        <a href="{% url 'timetable' %}" class="btn btn-outline-primary">
+                            <i class="bi bi-calendar3"></i> View Timetable
+                        </a>
+                    </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if not student.photo_straight or not student.photo_left or not student.photo_right %}
+<!-- Photo Upload Warning -->
+<div class="alert alert-warning d-flex align-items-center mb-4" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2" style="font-size: 1.5rem;"></i>
+    <div>
+        <strong>Action Required:</strong> Please upload all 3 photos for face recognition to work.
+        <a href="#photo-section" class="alert-link">Upload now</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- Photo Upload Section -->
+<div class="row mb-4" id="photo-section">
+    <div class="col-12">
+        <div class="card {% if student.photo_straight and student.photo_left and student.photo_right %}border-success{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center" {% if student.photo_straight and student.photo_left and student.photo_right %}data-bs-toggle="collapse" data-bs-target="#photoUploadBody" role="button" style="cursor: pointer;"{% endif %}>
+                <h5 class="mb-0">
+                    <i class="bi bi-camera"></i> Face Recognition Photos
+                    {% if student.photo_straight and student.photo_left and student.photo_right %}
+                    <span class="badge bg-success ms-2"><i class="bi bi-check-circle"></i> Complete</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark ms-2">
+                        {% if student.photo_straight and student.photo_left %}2{% elif student.photo_straight or student.photo_left or student.photo_right %}{% if student.photo_straight and student.photo_right %}2{% elif student.photo_left and student.photo_right %}2{% else %}1{% endif %}{% else %}0{% endif %}/3 Uploaded
+                    </span>
+                    {% endif %}
+                </h5>
+                {% if student.photo_straight and student.photo_left and student.photo_right %}
+                <i class="bi bi-chevron-down"></i>
+                {% endif %}
+            </div>
+            <div class="{% if student.photo_straight and student.photo_left and student.photo_right %}collapse{% endif %} card-body" id="photoUploadBody">
+                <p class="text-muted mb-3">Upload 3 photos for accurate face recognition. First photo will be your profile picture.</p>
+                <div class="row g-4">
+                    <!-- Straight Photo -->
+                    <div class="col-md-4">
+                        <div class="card h-100 {% if student.photo_straight %}border-success{% endif %}">
+                            <div class="card-body text-center">
+                                <div class="mb-3" style="height: 150px; display: flex; align-items: center; justify-content: center;">
+                                    {% if student.photo_straight %}
+                                    <img src="/media/known_faces/{{ student.photo_straight }}" 
+                                         alt="Front Photo" 
+                                         class="img-fluid rounded"
+                                         style="max-height: 150px; object-fit: cover;">
+                                    {% else %}
+                                    <div class="text-muted">
+                                        <i class="bi bi-person-bounding-box" style="font-size: 4rem;"></i>
+                                        <p class="mb-0">No photo</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <h6 class="card-title">
+                                    <i class="bi bi-emoji-smile"></i> Front Facing
+                                    {% if student.photo_straight %}
+                                    <span class="badge bg-success ms-1">✓</span>
+                                    {% endif %}
+                                </h6>
+                                <p class="card-text small text-muted">Look straight at the camera</p>
+                                <div class="d-flex gap-2">
+                                    <form method="post" action="{% url 'upload_photo' %}" enctype="multipart/form-data" class="photo-upload-form flex-grow-1">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="photo_type" value="straight">
+                                        <input type="file" name="photo" accept="image/*" capture="user" class="d-none photo-input" id="photo-straight">
+                                        <label for="photo-straight" class="btn btn-sm {% if student.photo_straight %}btn-outline-success{% else %}btn-primary{% endif %} w-100">
+                                            <i class="bi bi-camera"></i> {% if student.photo_straight %}Update{% else %}Upload{% endif %}
+                                        </label>
+                                    </form>
+                                    {% if student.photo_straight %}
+                                    <form method="post" action="{% url 'delete_photo' %}" onsubmit="return confirm('Delete this photo?');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="photo_type" value="straight">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete photo">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Left Photo -->
+                    <div class="col-md-4">
+                        <div class="card h-100 {% if student.photo_left %}border-success{% endif %}">
+                            <div class="card-body text-center">
+                                <div class="mb-3" style="height: 150px; display: flex; align-items: center; justify-content: center;">
+                                    {% if student.photo_left %}
+                                    <img src="/media/known_faces/{{ student.photo_left }}" 
+                                         alt="Left Photo" 
+                                         class="img-fluid rounded"
+                                         style="max-height: 150px; object-fit: cover;">
+                                    {% else %}
+                                    <div class="text-muted">
+                                        <i class="bi bi-arrow-left-circle" style="font-size: 4rem;"></i>
+                                        <p class="mb-0">No photo</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <h6 class="card-title">
+                                    <i class="bi bi-arrow-left"></i> Looking Left
+                                    {% if student.photo_left %}
+                                    <span class="badge bg-success ms-1">✓</span>
+                                    {% endif %}
+                                </h6>
+                                <p class="card-text small text-muted">Turn your head slightly left</p>
+                                <div class="d-flex gap-2">
+                                    <form method="post" action="{% url 'upload_photo' %}" enctype="multipart/form-data" class="photo-upload-form flex-grow-1">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="photo_type" value="left">
+                                        <input type="file" name="photo" accept="image/*" capture="user" class="d-none photo-input" id="photo-left">
+                                        <label for="photo-left" class="btn btn-sm {% if student.photo_left %}btn-outline-success{% else %}btn-primary{% endif %} w-100">
+                                            <i class="bi bi-camera"></i> {% if student.photo_left %}Update{% else %}Upload{% endif %}
+                                        </label>
+                                    </form>
+                                    {% if student.photo_left %}
+                                    <form method="post" action="{% url 'delete_photo' %}" onsubmit="return confirm('Delete this photo?');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="photo_type" value="left">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete photo">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Photo -->
+                    <div class="col-md-4">
+                        <div class="card h-100 {% if student.photo_right %}border-success{% endif %}">
+                            <div class="card-body text-center">
+                                <div class="mb-3" style="height: 150px; display: flex; align-items: center; justify-content: center;">
+                                    {% if student.photo_right %}
+                                    <img src="/media/known_faces/{{ student.photo_right }}" 
+                                         alt="Right Photo" 
+                                         class="img-fluid rounded"
+                                         style="max-height: 150px; object-fit: cover;">
+                                    {% else %}
+                                    <div class="text-muted">
+                                        <i class="bi bi-arrow-right-circle" style="font-size: 4rem;"></i>
+                                        <p class="mb-0">No photo</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <h6 class="card-title">
+                                    <i class="bi bi-arrow-right"></i> Looking Right
+                                    {% if student.photo_right %}
+                                    <span class="badge bg-success ms-1">✓</span>
+                                    {% endif %}
+                                </h6>
+                                <p class="card-text small text-muted">Turn your head slightly right</p>
+                                <div class="d-flex gap-2">
+                                    <form method="post" action="{% url 'upload_photo' %}" enctype="multipart/form-data" class="photo-upload-form flex-grow-1">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="photo_type" value="right">
+                                        <input type="file" name="photo" accept="image/*" capture="user" class="d-none photo-input" id="photo-right">
+                                        <label for="photo-right" class="btn btn-sm {% if student.photo_right %}btn-outline-success{% else %}btn-primary{% endif %} w-100">
+                                            <i class="bi bi-camera"></i> {% if student.photo_right %}Update{% else %}Upload{% endif %}
+                                        </label>
+                                    </form>
+                                    {% if student.photo_right %}
+                                    <form method="post" action="{% url 'delete_photo' %}" onsubmit="return confirm('Delete this photo?');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="photo_type" value="right">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete photo">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
             </div>
         </div>
     </div>
@@ -60,6 +252,77 @@
         </div>
     </div>
 </div>
+
+{% if has_schedule_changes %}
+<!-- Schedule Changes Alert -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-info">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Schedule Changes</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% if cancelled_today %}
+                    <div class="col-md-6 mb-3">
+                        <h6 class="text-danger"><i class="bi bi-x-circle"></i> Cancelled Today</h6>
+                        <ul class="list-unstyled mb-0">
+                            {% for c in cancelled_today %}
+                            <li class="mb-1">
+                                <span class="badge bg-danger">{{ c.timetable.start_time|time:"H:i" }}</span>
+                                {{ c.timetable.subject.name }} - {{ c.timetable.teacher.name }}
+                                {% if c.reason %}<small class="text-muted">({{ c.reason }})</small>{% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    {% if extra_today %}
+                    <div class="col-md-6 mb-3">
+                        <h6 class="text-success"><i class="bi bi-plus-circle"></i> Extra Lectures Today</h6>
+                        <ul class="list-unstyled mb-0">
+                            {% for e in extra_today %}
+                            <li class="mb-1">
+                                <span class="badge bg-success">{{ e.start_time|time:"H:i" }}</span>
+                                {{ e.subject.name }} - {{ e.teacher.name }} @ {{ e.room }}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    {% if cancelled_tomorrow %}
+                    <div class="col-md-6 mb-3">
+                        <h6 class="text-warning"><i class="bi bi-x-circle"></i> Cancelled Tomorrow</h6>
+                        <ul class="list-unstyled mb-0">
+                            {% for c in cancelled_tomorrow %}
+                            <li class="mb-1">
+                                <span class="badge bg-warning text-dark">{{ c.timetable.start_time|time:"H:i" }}</span>
+                                {{ c.timetable.subject.name }} - {{ c.timetable.teacher.name }}
+                                {% if c.reason %}<small class="text-muted">({{ c.reason }})</small>{% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    {% if extra_tomorrow %}
+                    <div class="col-md-6 mb-3">
+                        <h6 class="text-info"><i class="bi bi-plus-circle"></i> Extra Lectures Tomorrow</h6>
+                        <ul class="list-unstyled mb-0">
+                            {% for e in extra_tomorrow %}
+                            <li class="mb-1">
+                                <span class="badge bg-info">{{ e.start_time|time:"H:i" }}</span>
+                                {{ e.subject.name }} - {{ e.teacher.name }} @ {{ e.room }}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="row g-4">
     <!-- Today's Schedule -->
@@ -206,4 +469,66 @@
         </div>
     </div>
 </div>
+
+<!-- Tomorrow's Schedule -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-calendar-event"></i> Tomorrow's Schedule</h5>
+            </div>
+            <div class="card-body">
+                {% if tomorrows_schedule %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Subject</th>
+                                <th>Teacher</th>
+                                <th>Room</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in tomorrows_schedule %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-light text-dark">
+                                        {{ entry.start_time|time:"H:i" }} - {{ entry.end_time|time:"H:i" }}
+                                    </span>
+                                </td>
+                                <td><strong>{{ entry.subject.name }}</strong></td>
+                                <td>{{ entry.teacher.name }}</td>
+                                <td>{{ entry.room }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="bi bi-moon text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-2">No classes scheduled tomorrow!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bottom Spacing -->
+<div class="mb-5 pb-4"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-submit form when photo is selected
+document.querySelectorAll('.photo-input').forEach(input => {
+    input.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            this.closest('form').submit();
+        }
+    });
+});
+</script>
 {% endblock %}

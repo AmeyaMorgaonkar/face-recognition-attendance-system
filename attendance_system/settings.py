@@ -91,6 +91,10 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 
+# Media files (uploaded files)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR
+
 # Login settings
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
