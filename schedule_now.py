@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-"""Schedule a lecture starting immediately for testing face recognition."""
 import os
 import sys
 import django
