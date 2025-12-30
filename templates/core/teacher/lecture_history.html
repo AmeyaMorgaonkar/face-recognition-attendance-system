@@ -99,11 +99,9 @@
                                     </span>
                                 </td>
                                 <td>
-                                    {% with records=lecture.attendance_records.all %}
-                                    {% if records %}
-                                    {% with present_count=0 %}
-                                    {{ records.count }} students
-                                    {% endwith %}
+                                    {% with present=lecture.attendance_records.all %}
+                                    {% if present %}
+                                    <span class="text-success">{{ lecture.present_count }}</span>/<span class="text-muted">{{ lecture.total_students }}</span>
                                     {% else %}
                                     <span class="text-muted">-</span>
                                     {% endif %}

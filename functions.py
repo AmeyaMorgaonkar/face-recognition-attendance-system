@@ -33,10 +33,26 @@ class FaceRecognizer:
         self.model_path = model_path
         self.labels_path = "face_labels.pkl"
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-        self.recognizer = cv2.face.LBPHFaceRecognizer_create()
+        # Improved LBPH parameters for better lighting tolerance
+        self.recognizer = cv2.face.LBPHFaceRecognizer_create(
+            radius=2,        # Larger radius captures more texture
+            neighbors=16,    # More neighbors for better accuracy
+            grid_x=8,        # Finer grid for more detail
+            grid_y=8
+        )
         self.label_to_name = {}
         self.name_to_label = {}
         self.is_trained = False
+        # CLAHE for lighting normalization
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    
+    def preprocess_face(self, gray_face):
+        """Apply preprocessing to normalize lighting variations."""
+        # Apply CLAHE for adaptive histogram equalization
+        normalized = self.clahe.apply(gray_face)
+        # Optional: Gaussian blur to reduce noise
+        normalized = cv2.GaussianBlur(normalized, (3, 3), 0)
+        return normalized
         
     def load_known_faces(self):
         """
@@ -99,6 +115,8 @@ class FaceRecognizer:
                         # Extract and resize face region
                         face_roi = gray[y:y+h, x:x+w]
                         face_roi = cv2.resize(face_roi, (200, 200))
+                        # Apply preprocessing for lighting normalization
+                        face_roi = self.preprocess_face(face_roi)
                         faces.append(face_roi)
                         labels.append(label)
                         print(f"Loaded face for {person_name} from {image_name}")
@@ -167,11 +185,14 @@ class FaceRecognizer:
                 # Extract and resize face for recognition
                 face_roi = gray[y:y+h, x:x+w]
                 face_roi = cv2.resize(face_roi, (200, 200))
+                # Apply same preprocessing as training
+                face_roi = self.preprocess_face(face_roi)
                 
                 # Predict
                 label, confidence = self.recognizer.predict(face_roi)
                 
                 # Lower confidence = better match in LBPH
+                # Increased threshold since preprocessing makes matching more consistent
                 if confidence < confidence_threshold:
                     name = self.label_to_name.get(label, "Unknown")
                     recognized_names.append(name)

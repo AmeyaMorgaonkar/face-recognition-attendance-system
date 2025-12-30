@@ -165,13 +165,11 @@
                                     </span>
                                 </td>
                                 <td>
-                                    {% with present=lecture.attendance_records.all|length total=lecture.timetable.classroom.students.count %}
                                     {% if lecture.attendance_records.exists %}
-                                    {{ lecture.attendance_records.filter.count }}/{{ total }}
+                                    <span class="text-success">{{ lecture.present_count }}</span>/<span class="text-muted">{{ lecture.total_students }}</span>
                                     {% else %}
                                     -
                                     {% endif %}
-                                    {% endwith %}
                                 </td>
                                 <td>
                                     <a href="{% url 'teacher_manage_attendance' lecture.id %}" 

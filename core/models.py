@@ -247,6 +247,16 @@ class Lecture(models.Model):
     def teacher(self):
         return self.timetable.teacher
     
+    @property
+    def present_count(self):
+        """Count of students marked present"""
+        return self.attendance_records.filter(status='present').count()
+    
+    @property
+    def total_students(self):
+        """Total attendance records for this lecture"""
+        return self.attendance_records.count()
+    
     class Meta:
         ordering = ['-date', '-started_at']
         unique_together = ['timetable', 'date']
