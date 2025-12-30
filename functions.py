@@ -174,18 +174,17 @@ class FaceRecognizer:
                 # Lower confidence = better match in LBPH
                 if confidence < confidence_threshold:
                     name = self.label_to_name.get(label, "Unknown")
-                    conf_percent = max(0, 100 - confidence)  # Convert to percentage (higher = better)
                     recognized_names.append(name)
                     color = (0, 255, 0)  # Green for recognized
-                    label_text = f"{name} ({conf_percent:.0f}%)"
+                    label_text = name  # Just show the name, no percentage
             
             # Draw rectangle around face
             cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
             
-            # Draw label with name
+            # Draw label with name (background matches box color, black text)
             cv2.rectangle(frame, (x, y+h), (x+w, y+h+35), color, cv2.FILLED)
             cv2.putText(frame, label_text, (x+6, y+h+25), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
         
         return frame, recognized_names
     

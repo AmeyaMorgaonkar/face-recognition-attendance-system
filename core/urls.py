@@ -23,10 +23,10 @@ urlpatterns = [
     path('teacher/timetable/', views.teacher_timetable, name='teacher_timetable'),
     path('teacher/lectures/', views.teacher_lecture_history, name='teacher_lecture_history'),
     path('teacher/schedule-extra/', views.teacher_schedule_extra, name='teacher_schedule_extra'),
-    path('teacher/cancel-lectures/', views.teacher_cancel_lectures, name='teacher_cancel_lectures'),
     path('teacher/start-lecture/<int:timetable_id>/', views.teacher_start_lecture, name='teacher_start_lecture'),
     path('teacher/end-lecture/<int:lecture_id>/', views.teacher_end_lecture, name='teacher_end_lecture'),
     path('teacher/attendance/<int:lecture_id>/', views.teacher_manage_attendance, name='teacher_manage_attendance'),
+    path('teacher/cancel-lectures/', views.teacher_cancel_lectures, name='teacher_cancel_lectures'),
     
     # API endpoints for face recognition integration
     path('api/active-lecture/<int:classroom_id>/', views.api_get_active_lecture, name='api_active_lecture'),

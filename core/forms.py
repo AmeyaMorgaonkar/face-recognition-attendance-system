@@ -132,23 +132,31 @@ class ScheduleExtraLectureForm(forms.Form):
         if date and date < datetime.date.today():
             raise forms.ValidationError('Cannot schedule lectures in the past')
         
+        # Check for conflicts with existing timetable
         if date and start_time and end_time and classroom:
             day_of_week = date.weekday()
             
-            # Check for conflicts with recurring timetable (excluding cancelled ones)
+            # Get IDs of cancelled lectures for this date
+            cancelled_ids = CancelledLecture.objects.filter(
+                date=date
+            ).values_list('timetable_id', flat=True)
+            
+            # Check recurring lectures (excluding cancelled ones)
             recurring_conflicts = Timetable.objects.filter(
                 classroom=classroom,
                 day_of_week=day_of_week,
                 is_recurring=True,
                 start_time__lt=end_time,
                 end_time__gt=start_time
-            ).exclude(
-                cancellations__date=date  # Exclude if cancelled for this date
-            )
-            if recurring_conflicts.exists():
-                raise forms.ValidationError(f'{classroom} already has a lecture at this time')
+            ).exclude(id__in=cancelled_ids)
             
-            # Check for conflicts with extra lectures on the same date
+            if recurring_conflicts.exists():
+                conflict = recurring_conflicts.first()
+                raise forms.ValidationError(
+                    f'{classroom} already has {conflict.subject.name} at {conflict.start_time.strftime("%H:%M")}-{conflict.end_time.strftime("%H:%M")}'
+                )
+            
+            # Check extra lectures for this specific date
             extra_conflicts = Timetable.objects.filter(
                 classroom=classroom,
                 is_recurring=False,
@@ -156,36 +164,51 @@ class ScheduleExtraLectureForm(forms.Form):
                 start_time__lt=end_time,
                 end_time__gt=start_time
             )
+            
             if extra_conflicts.exists():
-                raise forms.ValidationError(f'{classroom} already has an extra lecture scheduled at this time')
+                conflict = extra_conflicts.first()
+                raise forms.ValidationError(
+                    f'{classroom} already has an extra lecture ({conflict.subject.name}) scheduled at this time on {date}'
+                )
         
         # Check for room conflicts
         if date and start_time and end_time and room:
             day_of_week = date.weekday()
             
-            # Check recurring room bookings (excluding cancelled)
-            room_recurring = Timetable.objects.filter(
+            # Get IDs of cancelled lectures for this date
+            cancelled_ids = CancelledLecture.objects.filter(
+                date=date
+            ).values_list('timetable_id', flat=True)
+            
+            # Check recurring room conflicts (excluding cancelled)
+            room_recurring_conflicts = Timetable.objects.filter(
                 room=room,
                 day_of_week=day_of_week,
                 is_recurring=True,
                 start_time__lt=end_time,
                 end_time__gt=start_time
-            ).exclude(
-                cancellations__date=date
-            )
-            if room_recurring.exists():
-                raise forms.ValidationError(f'{room} is already booked at this time')
+            ).exclude(id__in=cancelled_ids)
             
-            # Check extra lecture room bookings
-            room_extra = Timetable.objects.filter(
+            if room_recurring_conflicts.exists():
+                conflict = room_recurring_conflicts.first()
+                raise forms.ValidationError(
+                    f'{room} is already booked for {conflict.classroom} ({conflict.subject.name}) at this time'
+                )
+            
+            # Check extra lecture room conflicts for this specific date
+            room_extra_conflicts = Timetable.objects.filter(
                 room=room,
                 is_recurring=False,
                 extra_date=date,
                 start_time__lt=end_time,
                 end_time__gt=start_time
             )
-            if room_extra.exists():
-                raise forms.ValidationError(f'{room} is already booked for an extra lecture at this time')
+            
+            if room_extra_conflicts.exists():
+                conflict = room_extra_conflicts.first()
+                raise forms.ValidationError(
+                    f'{room} is already booked for an extra lecture ({conflict.classroom}) at this time on {date}'
+                )
         
         return cleaned_data
 

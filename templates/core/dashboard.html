@@ -253,77 +253,6 @@
     </div>
 </div>
 
-{% if has_schedule_changes %}
-<!-- Schedule Changes Alert -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card border-info">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Schedule Changes</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    {% if cancelled_today %}
-                    <div class="col-md-6 mb-3">
-                        <h6 class="text-danger"><i class="bi bi-x-circle"></i> Cancelled Today</h6>
-                        <ul class="list-unstyled mb-0">
-                            {% for c in cancelled_today %}
-                            <li class="mb-1">
-                                <span class="badge bg-danger">{{ c.timetable.start_time|time:"H:i" }}</span>
-                                {{ c.timetable.subject.name }} - {{ c.timetable.teacher.name }}
-                                {% if c.reason %}<small class="text-muted">({{ c.reason }})</small>{% endif %}
-                            </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                    {% endif %}
-                    {% if extra_today %}
-                    <div class="col-md-6 mb-3">
-                        <h6 class="text-success"><i class="bi bi-plus-circle"></i> Extra Lectures Today</h6>
-                        <ul class="list-unstyled mb-0">
-                            {% for e in extra_today %}
-                            <li class="mb-1">
-                                <span class="badge bg-success">{{ e.start_time|time:"H:i" }}</span>
-                                {{ e.subject.name }} - {{ e.teacher.name }} @ {{ e.room }}
-                            </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                    {% endif %}
-                    {% if cancelled_tomorrow %}
-                    <div class="col-md-6 mb-3">
-                        <h6 class="text-warning"><i class="bi bi-x-circle"></i> Cancelled Tomorrow</h6>
-                        <ul class="list-unstyled mb-0">
-                            {% for c in cancelled_tomorrow %}
-                            <li class="mb-1">
-                                <span class="badge bg-warning text-dark">{{ c.timetable.start_time|time:"H:i" }}</span>
-                                {{ c.timetable.subject.name }} - {{ c.timetable.teacher.name }}
-                                {% if c.reason %}<small class="text-muted">({{ c.reason }})</small>{% endif %}
-                            </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                    {% endif %}
-                    {% if extra_tomorrow %}
-                    <div class="col-md-6 mb-3">
-                        <h6 class="text-info"><i class="bi bi-plus-circle"></i> Extra Lectures Tomorrow</h6>
-                        <ul class="list-unstyled mb-0">
-                            {% for e in extra_tomorrow %}
-                            <li class="mb-1">
-                                <span class="badge bg-info">{{ e.start_time|time:"H:i" }}</span>
-                                {{ e.subject.name }} - {{ e.teacher.name }} @ {{ e.room }}
-                            </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
 <div class="row g-4">
     <!-- Today's Schedule -->
     <div class="col-lg-6">
@@ -463,52 +392,6 @@
                 <div class="text-center py-4">
                     <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
                     <p class="text-muted mt-2">No attendance records yet</p>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Tomorrow's Schedule -->
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-calendar-event"></i> Tomorrow's Schedule</h5>
-            </div>
-            <div class="card-body">
-                {% if tomorrows_schedule %}
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Subject</th>
-                                <th>Teacher</th>
-                                <th>Room</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for entry in tomorrows_schedule %}
-                            <tr>
-                                <td>
-                                    <span class="badge bg-light text-dark">
-                                        {{ entry.start_time|time:"H:i" }} - {{ entry.end_time|time:"H:i" }}
-                                    </span>
-                                </td>
-                                <td><strong>{{ entry.subject.name }}</strong></td>
-                                <td>{{ entry.teacher.name }}</td>
-                                <td>{{ entry.room }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% else %}
-                <div class="text-center py-4">
-                    <i class="bi bi-moon text-muted" style="font-size: 3rem;"></i>
-                    <p class="text-muted mt-2">No classes scheduled tomorrow!</p>
                 </div>
                 {% endif %}
             </div>

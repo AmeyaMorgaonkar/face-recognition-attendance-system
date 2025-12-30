@@ -1,17 +1,3 @@
-#!/usr/bin/env python
-"""
-Main entry point for Face Recognition Attendance System with Django integration.
-
-Usage:
-    python main.py                    # Run face recognition (manual mode)
-    python main.py auto <classroom>   # Auto mode - monitors timetable, starts 15min before lecture
-    python main.py runserver          # Start Django web server
-    python main.py migrate            # Run database migrations
-    python main.py createsuperuser    # Create admin user
-    python main.py setup              # Initial setup (migrate + create sample data)
-    python main.py shell              # Django shell
-"""
-
 import sys
 import os
 from datetime import datetime, timedelta, time as dt_time
@@ -121,6 +107,13 @@ def run_face_recognition():
             print(f"\n✓ LECTURE STARTED: {timetable_entry.subject.name}")
             print(f"  Class: {timetable_entry.classroom.name}")
             print(f"  Time: {timetable_entry.start_time} - {timetable_entry.end_time}")
+        elif lecture.status == 'completed':
+            # Lecture was completed but we're still in the time window - reactivate it
+            lecture.status = 'active'
+            lecture.save()
+            print(f"\n✓ LECTURE REACTIVATED: {timetable_entry.subject.name}")
+            print(f"  Class: {timetable_entry.classroom.name}")
+            print(f"  Time: {timetable_entry.start_time} - {timetable_entry.end_time}")
         
         return lecture
     
@@ -180,9 +173,13 @@ def run_face_recognition():
         now = timezone.localtime()
         
         # Check timetable every second
-        if last_check_time is None or (now - last_check_time).seconds >= 1:
+        if last_check_time is None or (now - last_check_time).total_seconds() >= 1:
             last_check_time = now
             current_timetable = get_current_timetable_entry()
+            
+            # Debug print
+            if current_timetable and not active_lecture:
+                print(f"\n✓ Found lecture: {current_timetable.subject.name} for {current_timetable.classroom}")
             
             # Handle lecture transitions
             if current_timetable != active_timetable:
@@ -280,17 +277,6 @@ def run_face_recognition():
 
 
 def run_auto_attendance(room_name=None):
-    """
-    Automated attendance mode for a specific ROOM (not classroom).
-    
-    - Camera is placed in a Room
-    - Monitors timetable to see which Classroom uses this Room at what time
-    - Starts camera 15 minutes before each scheduled lecture
-    - Auto-creates lecture and starts attendance when lecture time begins
-    - For back-to-back lectures of the SAME classroom, carries forward attendance
-    - For different classrooms, creates fresh attendance
-    - Marks all students who didn't appear as absent when lecture ends
-    """
     import cv2
     import functions
     import django
@@ -358,28 +344,32 @@ def run_auto_attendance(room_name=None):
     
     def get_next_lecture_info():
         """Get the next upcoming lecture from timetable FOR THIS ROOM"""
-        now = timezone.now()
+        from django.db.models import Q
+        now = timezone.localtime()  # Use local time, not UTC
         current_time = now.time()
         day_of_week = now.weekday()
+        today = now.date()
         
         # Get today's remaining lectures IN THIS ROOM
+        # Include both recurring lectures and extra lectures for today
         todays_lectures = Timetable.objects.filter(
-            room=room,
-            day_of_week=day_of_week,
+            Q(room=room, day_of_week=day_of_week, is_recurring=True) |
+            Q(room=room, is_recurring=False, extra_date=today),
             end_time__gt=current_time  # Lecture hasn't ended yet
         ).order_by('start_time')
         
         if todays_lectures.exists():
-            return todays_lectures.first(), now.date()
+            return todays_lectures.first(), today
         
-        # No more lectures today, check next days
+        # No more lectures today, check next days (only recurring)
         for days_ahead in range(1, 8):
             future_date = now.date() + timedelta(days=days_ahead)
             future_day = future_date.weekday()
             
+            # Check for extra lectures on that specific date OR recurring lectures
             future_lectures = Timetable.objects.filter(
-                room=room,
-                day_of_week=future_day
+                Q(room=room, day_of_week=future_day, is_recurring=True) |
+                Q(room=room, is_recurring=False, extra_date=future_date)
             ).order_by('start_time')
             
             if future_lectures.exists():
@@ -389,7 +379,7 @@ def run_auto_attendance(room_name=None):
     
     def time_until(target_time, target_date):
         """Calculate seconds until a target datetime"""
-        now = timezone.now()
+        now = timezone.localtime()  # Use local time
         target_datetime = timezone.make_aware(
             datetime.combine(target_date, target_time)
         )
@@ -451,7 +441,7 @@ def run_auto_attendance(room_name=None):
     
     try:
         while True:
-            now = timezone.now()
+            now = timezone.localtime()  # Use local time
             current_time = now.time()
             today = now.date()
             

@@ -345,10 +345,18 @@ def timetable_view(request):
         if day_entries.exists():
             timetable_by_day[day_name] = day_entries
     
+    # Get today's classes
+    today = timezone.now().date()
+    today_day_of_week = today.weekday()  # 0 = Monday, 6 = Sunday
+    todays_classes = timetable_entries.filter(day_of_week=today_day_of_week)
+    today_name = days[today_day_of_week]
+    
     context = {
         'student': student,
         'timetable_by_day': timetable_by_day,
         'days': days[:5],  # Monday to Friday only for display
+        'todays_classes': todays_classes,
+        'today_name': today_name,
     }
     
     return render(request, 'core/timetable.html', context)

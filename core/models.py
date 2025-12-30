@@ -290,16 +290,16 @@ class Attendance(models.Model):
 class CancelledLecture(models.Model):
     """
     Tracks cancelled lectures for specific dates.
-    The timetable entry remains, but the lecture is cancelled for this date.
+    This allows soft-cancellation without removing from weekly timetable.
     """
     timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='cancellations')
-    date = models.DateField()
+    date = models.DateField(help_text="The specific date this lecture is cancelled")
     reason = models.CharField(max_length=255, blank=True)
-    cancelled_by = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True)
+    cancelled_by = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, blank=True)
     cancelled_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
-        return f"{self.timetable.subject} - {self.timetable.classroom} cancelled on {self.date}"
+        return f"{self.timetable.subject} cancelled on {self.date}"
     
     class Meta:
         unique_together = ['timetable', 'date']
