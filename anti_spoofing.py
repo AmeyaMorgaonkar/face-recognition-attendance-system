@@ -1,16 +1,3 @@
-"""
-Anti-Spoofing Module for Face Recognition Attendance System
-
-Detects spoofing attempts using printed photos or phone screens.
-Uses multiple lightweight checks with voting mechanism.
-
-Detection methods:
-1. Specular highlight detection (screen glare)
-2. Edge sharpness analysis (pixel artifacts)
-3. Color distribution analysis (screen color shift)
-4. Reflection pattern detection
-"""
-
 import cv2
 import numpy as np
 
@@ -22,13 +9,6 @@ class AntiSpoofingDetector:
     """
     
     def __init__(self, config=None):
-        """
-        Initialize the anti-spoofing detector.
-        
-        Args:
-            config: Optional dict with threshold overrides
-        """
-        # Default configuration - stricter to catch phone screens
         self.config = {
             'specular_threshold': 0.005,      # % of very bright pixels (Stricter: was 0.008)
             'specular_intensity': 215,        # Brightness threshold (Stricter: was 230)
