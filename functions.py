@@ -3,6 +3,7 @@ import cv2
 import os
 import numpy as np
 import pickle
+import anti_spoofing
 
 def draw(img, classifier, scaleFactor, minNeighbors, color, text):
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -181,10 +182,22 @@ class FaceRecognizer:
             label_text = "Unknown"
             color = (0, 0, 255)  # Red for unknown
             
-            if self.is_trained:
-                # Extract and resize face for recognition
-                face_roi = gray[y:y+h, x:x+w]
-                face_roi = cv2.resize(face_roi, (200, 200))
+            # Extract face regions
+            face_roi_gray = gray[y:y+h, x:x+w]
+            face_roi_color = frame[y:y+h, x:x+w]
+            
+            # Check Liveness FIRST
+            liveness = anti_spoofing.check_liveness(face_roi_color)
+            
+            if not liveness['is_live']:
+                # It's a spoof!
+                name = "FAKE / SPOOF"
+                label_text = f"SPOOF ({liveness['spoof_type']})"
+                color = (0, 0, 255)  # Red for spoof
+                # Do NOT add to recognized_names so attendance isn't marked
+            elif self.is_trained:
+                # It's real, proceed with recognition
+                face_roi = cv2.resize(face_roi_gray, (200, 200))
                 # Apply same preprocessing as training
                 face_roi = self.preprocess_face(face_roi)
                 
